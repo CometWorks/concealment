@@ -18,7 +18,7 @@ This repository builds only the Magnetar server plugin.
 
 ## Build
 
-Install the Space Engineers Dedicated Server build references and the .NET SDK required by the project, then build:
+Install the Space Engineers Dedicated Server, Magnetar and the .NET SDK required by the project, then build:
 
 ```sh
 dotnet build Concealment.sln -c Debug
@@ -30,22 +30,27 @@ The plugin output is:
 ServerPlugin/bin/Debug/net10.0/Concealment.dll
 ```
 
+The plugin version lives in `Version.Build.props`.
+
+`Directory.Build.props` auto-detects the Dedicated Server (`Dedicated64`) and the Magnetar
+installation holding `PluginSdk.dll` (`Magnetar`). To override them, put your local paths into
+`Directory.Build.props.user`, which is not committed. Running `setup.py` writes that file for you.
+
 ## Configuration
 
 Magnetar stores configuration through the Plugin SDK config system.
 
-## Deployment
+## Development
 
-Use the Magnetar local plugin folder or the included deploy scripts after a build:
+Load the working copy through a Magnetar development folder: start Magnetar with `-sources` and
+add the repository with the Sources button. Magnetar then compiles the plugin from source.
+
+Builds deploy nothing by default. To copy the build into Magnetar's `Local` plugin folder, set
+`MagnetarData` to the Magnetar config folder (the one holding `Local`, `Sources` and `Profiles`)
+in `Directory.Build.props.user`, or pass it to a single build:
 
 ```sh
-ServerPlugin/Deploy.sh Concealment.dll ServerPlugin/bin/Debug/net10.0
-```
-
-On Windows:
-
-```bat
-ServerPlugin\Deploy.bat Concealment.dll ServerPlugin\bin\Debug\net10.0
+dotnet build Concealment.sln -p:MagnetarData=$HOME/.config/Magnetar/Magnetar
 ```
 
 `Concealment.xml` is the MagnetarHub metadata file for server-side publication.

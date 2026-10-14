@@ -151,7 +151,10 @@ public sealed class DynamicConcealmentManager : IDisposable
             var patched = 0;
             foreach (var name in PatchTargets)
             {
-                var target = type.GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                // Harmony patches only methods the type declares; the base types
+                // get theirs in the next rounds of the loop
+                var target = type.GetMethod(name,
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
                 if (target == null || !patchedMethods.Add(target))
                     continue;
 

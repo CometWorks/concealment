@@ -90,10 +90,6 @@ def test_projector_switched_off_stays_off(game):
         game.a.probe("action", grids.PROJECTOR_ID, "OnOff_On")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a world saved while a grid is concealed saves its projector switched off",
-)
 def test_world_saved_while_concealed_keeps_the_projector_on(game):
     """An autosave or a save command while the grid is concealed must not save
     the projector switched off: after a crash it would stay off"""

@@ -14,16 +14,19 @@ public sealed class ConcealmentCommands : CommandModule
 
     [Command("run", "Conceal grids farther than the configured or supplied distance from online players")]
     [Permission(MyPromoteLevel.SpaceMaster)]
-    public string Conceal(double distance = 0)
+    public CommandReply Conceal(double distance = 0)
     {
         if (Plugin?.Manager == null)
-            return "Concealment is not loaded.";
+            return CommandReply.Error("Concealment is not loaded.");
+
+        if (distance < 0)
+            return CommandReply.Error("The distance can't be negative.");
 
         if (distance == 0)
             distance = Plugin.ConfigData.ConcealDistance;
 
         var count = Plugin.Manager.ConcealGrids(distance);
-        return $"{count} grids concealed.";
+        return CommandReply.Ok($"{count} grids concealed.");
     }
 
     [Command("reveal", "Reveal concealed grids near your controlled entity")]
@@ -32,6 +35,9 @@ public sealed class ConcealmentCommands : CommandModule
     {
         if (Plugin?.Manager == null)
             return CommandReply.Error("Concealment is not loaded.");
+
+        if (distance < 0)
+            return CommandReply.Error("The distance can't be negative.");
 
         if (!TryGetCallerPosition(out var position))
             return CommandReply.Error("You must be controlling an entity.");

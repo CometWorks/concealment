@@ -125,10 +125,6 @@ def test_concealed_grid_keeps_drifting(game):
         stop(game, drifter)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the reveal scan looks for a concealed grid where it was concealed",
-)
 def test_approach_reveals_a_grid_that_drifted(game):
     drifter = grids.DRIFTER
     try:
@@ -144,10 +140,6 @@ def test_approach_reveals_a_grid_that_drifted(game):
         stop(game, drifter)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a block of a concealed grid that asks for updates gets them",
-)
 def test_block_woken_while_concealed_stays_concealed(game):
     """Restarting the timer of a concealed grid, the way a mod, a script on
     another grid or a network event would, must not make it count"""

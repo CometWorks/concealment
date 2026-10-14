@@ -9,7 +9,6 @@ import math
 import time
 
 import grids
-import pytest
 import session
 from conftest import wait_until
 from grids import offset
@@ -69,10 +68,6 @@ def test_one_player_reveals_for_the_other(game):
     assert station.entity_id in client_grids(game.b)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="dynamic concealment rules never apply: patching the update methods fails",
-)
 def test_dynamic_rule_skips_updates_while_nobody_is_near(game):
     game.configure(
         DynamicConcealment=[
@@ -89,10 +84,6 @@ def test_dynamic_rule_skips_updates_while_nobody_is_near(game):
     wait_until(lambda: not timer_runs(game, 2), 20, "the timer stopping with A gone")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="dynamic concealment rules never apply: patching the update methods fails",
-)
 def test_dynamic_rule_tells_friends_from_enemies(game):
     """Player B is in no faction, so A's timer counts B as hostile"""
     game.configure(

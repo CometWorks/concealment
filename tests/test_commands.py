@@ -85,14 +85,13 @@ def test_run_again_conceals_nothing_new(game):
     assert game.conceal() == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a negative distance conceals the grids next to the players",
-)
-def test_run_with_a_negative_distance(game):
+def test_negative_distances_are_refused(game):
     game.a.teleport(offset(grids.PLAIN_STATION.position, 200.0))
-    game.a.command("!conceal run -1")
-    assert not game.is_concealed(grids.PLAIN_STATION)
+    assert game.a.command("!conceal run -1") == "The distance can't be negative."
+    assert game.concealed_ids() == set()
+    game.conceal()
+    assert game.a.command("!conceal reveal -1") == "The distance can't be negative."
+    assert game.is_concealed(grids.PLAIN_SHIP)
 
 
 def test_run_while_disabled(game):

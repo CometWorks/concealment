@@ -111,6 +111,12 @@ public sealed class ConcealGroup
                 return;
 
             removeUpdatingComponents?.Invoke(entity);
+
+            // An entity whose NeedsUpdate changed this frame, like a projector
+            // switched off above, is queued for registering again. Unregistering
+            // it then only drops it from that queue and keeps its registration,
+            // so it takes a second call.
+            MyEntities.UnregisterForUpdate(entity);
             MyEntities.UnregisterForUpdate(entity);
             (entity.GameLogic as IMyGameLogicComponent)?.UnregisterForUpdate();
             entity.Flags |= ConcealedFlag;

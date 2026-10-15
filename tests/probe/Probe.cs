@@ -19,6 +19,7 @@ using SpaceEngineers.Game.Entities.Blocks;
 using VRage;
 using VRage.FileSystem;
 using VRage.Game;
+using VRage.Game.Entity;
 using VRage.Game.ModAPI;
 using VRage.ModAPI;
 using VRage.ObjectBuilders;
@@ -305,6 +306,23 @@ public sealed class ProbeCommands : CommandModule
         return $"Probe projector: enabled={(projector.Enabled ? 1 : 0)} "
             + $"projecting={(projector.ProjectedGrid != null ? 1 : 0)} "
             + $"tier={projector.CubeGrid.PlayerPresenceTier}";
+    }
+
+    [Command("updating", "Whether the game updates an entity, once its queued update changes apply.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Updating(long entityId)
+    {
+        if (!(MyEntities.GetEntityById(entityId) is MyEntity entity))
+            return "Probe updating: none";
+
+        object orchestrator = MyEntities.Orchestrator;
+        object Field(string name) => orchestrator.GetType().GetField(name, Any).GetValue(orchestrator);
+        bool Queued(string name) => ((IEnumerable<MyEntity>)Field(name)).Contains(entity);
+
+        bool updating =
+            Queued("m_entitiesToAdd")
+            || (((IDictionary)Field("m_lastUpdateRecord")).Contains(entity) && !Queued("m_entitiesToRemove"));
+        return $"Probe updating: {(updating ? 1 : 0)}";
     }
 
     [Command("sensor", "A sensor's state and the entity ids it detects.")]

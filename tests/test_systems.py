@@ -88,6 +88,14 @@ def test_projector_is_switched_off_while_concealed(game, projecting):
     wait_projecting(game)
 
 
+def test_concealed_projector_gets_no_updates(game, projecting):
+    """Switching the projector off as its grid is concealed queues it for
+    updates again in the same frame; it still must not get any"""
+    assert game.a.probe("updating", grids.PROJECTOR_ID) == "Probe updating: 1"
+    game.conceal()
+    assert game.a.probe("updating", grids.PROJECTOR_ID) == "Probe updating: 0"
+
+
 def test_projector_switched_off_stays_off(game):
     """Concealment switches back on only the projectors it switched off"""
     game.a.probe("action", grids.PROJECTOR_ID, "OnOff_Off")

@@ -5,7 +5,7 @@
     <Id>C88741F0-0AA5-4263-BD78-5D21467A84D3</Id>
 
     <!-- GitHub repository ID -->
-    <RepoId>viktor-ferenczi/se-concealment</RepoId>
+    <RepoId>CometWorks/concealment</RepoId>
 
     <!-- The name of your plugin that will appear in the plugin list -->
     <FriendlyName>Concealment</FriendlyName>
@@ -18,14 +18,21 @@
 
     <!-- Optional plugin description. If omitted, this will be the same as the Tooltip. 1000 characters max. -->
     <Description>
-        Concealment is a server-side Space Engineers plugin for Magnetar that reduces
-        dedicated server load by skipping work that only matters on a graphical client.
+        Concealment cuts dedicated server load by concealing grid groups that are far
+        from every online player. Concealed grids stop simulating, so their timers,
+        programmable blocks and thrusters pause. They are revealed again when a
+        player comes near.
 
-        It uses Harmony patches — for example disabling LCD text-panel visibility
-        updates on the dedicated server — to cut needless CPU and network overhead.
-        Patches are guarded by startup code-change detection so they fail-safe when a
-        Space Engineers update alters the patched methods, and the plugin is configured
-        through the Magnetar PluginSdk with its UI rendered by Quasar.
+        Admins set the conceal and reveal distances and scan intervals, the block
+        subtypes that keep a grid group revealed, and whether pirate grids may be
+        concealed. Active refineries and assemblers follow a production mode: Off keeps
+        them revealed, Conceal pauses them, and Approximate lets them catch up at boosted
+        speed after they are revealed. Dynamic rules skip selected block updates while
+        no matching characters or grids are nearby. An optional remote control action
+        keeps a grid revealed for one conceal interval.
+
+        Commands: !conceal run, !conceal reveal, !conceal reveal all, !conceal on and
+        !conceal off.
 
         Functionality is inspired by and reimplements the original Torch plugin
         Concealment by TorchAPI: https://github.com/TorchAPI/Concealment

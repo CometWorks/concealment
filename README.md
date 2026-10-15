@@ -40,6 +40,13 @@ installation holding `PluginSdk.dll` (`Magnetar`). To override them, put your lo
 
 Magnetar stores configuration through the Plugin SDK config system.
 
+## Grid Backups
+
+If the server also runs [Grid Backups](https://github.com/CometWorks/grid-backups), Concealment
+asks it for a backup of each grid group just before concealing it. Grid Backups decides whether
+to write one: its `BackupBeforeConcealment` option and its minimum time between two backups of
+a grid (`MinMinutesSinceLastSave`) apply.
+
 ## Development
 
 Load the working copy through a Magnetar development folder: start Magnetar with `-sources` and

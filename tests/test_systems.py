@@ -6,7 +6,6 @@ from __future__ import annotations
 import time
 
 import grids
-import pytest
 from conftest import wait_until
 from session import parse
 
@@ -99,10 +98,6 @@ def test_world_saved_while_concealed_keeps_the_projector_on(game):
     assert "<Enabled>true</Enabled>" in game.saved_block(grids.PROJECTOR_ID)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SE1-0198: Concealment never calls Grid Backups' BackupBeforeConcealment",
-)
 def test_grid_backups_backs_up_before_concealment(game):
     before = set(game.server.backup_files())
     game.conceal()

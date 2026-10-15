@@ -45,6 +45,7 @@ public sealed class ConcealmentManager : IDisposable
         new MyDynamicAABBTreeD(MyConstants.GAME_PRUNING_STRUCTURE_AABB_EXTENSION);
 
     private Action<MyEntity> onEntityClosingAction;
+    private GridBackups gridBackups;
     private Action<MyObjectBuilder_Checkpoint> onSavingCheckpoint;
     private ulong counter;
     private bool initialized;
@@ -296,6 +297,11 @@ public sealed class ConcealmentManager : IDisposable
 
         readyTick = plugin.Tick + 60 * 30;
 
+        // Every plugin has loaded by the time a session runs
+        gridBackups = GridBackups.Find(log);
+        if (gridBackups != null)
+            log.Info("Grid Backups found, it backs up each grid group before it is concealed");
+
         if (Config.RemoteControlKeepAliveAction)
         {
             var keepAliveAction = MyAPIGateway.TerminalControls.CreateAction<IMyRemoteControl>("Concealment.KeepAlive");
@@ -336,6 +342,7 @@ public sealed class ConcealmentManager : IDisposable
 
         log.Debug("Concealing grids: {0}", group.GridNames);
 
+        gridBackups?.BackUp(group);
         CacheProductionCatchupGrids(group);
         group.ConcealedAtTick = plugin.Tick;
 

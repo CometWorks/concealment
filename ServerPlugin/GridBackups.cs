@@ -71,14 +71,19 @@ public sealed class GridBackups
     // minimum time between two backups of the same grid.
     public void BackUp(ConcealGroup group)
     {
+        // A projector's projection is a grid group of its own, not worth a backup
+        var grids = group.Grids.Where(g => !g.IsPreview).ToList();
+        if (grids.Count == 0)
+            return;
+
         try
         {
-            var owner = group
-                .Grids.OrderByDescending(g => g.BlocksCount)
+            var owner = grids
+                .OrderByDescending(g => g.BlocksCount)
                 .First()
                 .BigOwners.FirstOrDefault();
-            var builders = group
-                .Grids.Select(g => g.GetObjectBuilder())
+            var builders = grids
+                .Select(g => g.GetObjectBuilder())
                 .OfType<MyObjectBuilder_CubeGrid>()
                 .ToList();
             Task.Run(() =>

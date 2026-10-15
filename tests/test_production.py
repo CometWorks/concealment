@@ -29,21 +29,43 @@ def refinery(game):
 
 
 def production(game) -> dict:
+    """The refinery's state. It refines in production updates, every 60
+    frames near a player and up to every 240 far from all of them, each the
+    ore of the frames since the last one: `updated` is the frame of the last
+    update, the one its input is from."""
     state = parse(game.a.probe("production", grids.REFINERY_ID))
+    frame = int(state["frame"])
     return {
         "producing": state["producing"] == "1",
         "input": float(state["input"]),
         "power": float(state["power"]),
-        "frame": int(state["frame"]),
+        "frame": frame,
+        "updated": frame - int(state["since"]),
     }
 
 
+def rate_between(start: dict, end: dict) -> float:
+    """Ore refined per second between the production updates of two states"""
+    frames = end["updated"] - start["updated"]
+    assert frames > 0, (start, end)
+    return (start["input"] - end["input"]) / (frames / 60)
+
+
 def rate(game, seconds: float) -> float:
-    """Ore refined per second over this long"""
+    """Ore refined per second, over probes this far apart. At least 4 s, so
+    an update comes between them."""
     start = production(game)
     time.sleep(seconds)
-    end = production(game)
-    return (start["input"] - end["input"]) / ((end["frame"] - start["frame"]) / 60)
+    return rate_between(start, production(game))
+
+
+def refining_after(game, before: dict) -> dict:
+    """The refinery's state once it has refined since `before`. Right after a
+    reveal it refines nothing for an update or two, until its power is back."""
+    wait_until(
+        lambda: production(game)["input"] < before["input"], 20, "the refinery refining"
+    )
+    return production(game)
 
 
 def banks(game) -> dict[int, float]:
@@ -84,37 +106,44 @@ def test_conceal_pauses_production(game, refinery):
     assert production(game)["input"] == start["input"]
 
     game.a.command("!conceal reveal all")
-    assert rate(game, 3) > 0
+    refining_after(game, start)
     assert grids.REFINERY.entity_id not in banks(game)
 
 
 def test_approximate_catches_up(game, refinery):
-    """The refinery works in batches, so the rates are taken over several"""
+    """The time concealed divided by the boost level is banked, and the
+    refinery works at five times its speed until the bank is spent"""
     game.configure(ProductionConcealment="Approximate", ProductionBoostLevel=5)
-    normal = rate(game, 20)
+    normal = rate(game, 10)
     assert normal > 0
 
+    before = production(game)["frame"]
     game.conceal()
-    start = production(game)["frame"]
-    time.sleep(60)
+    concealed = production(game)["frame"]
+    # 20 s of boost, long enough to measure the boosted rate in it
+    time.sleep(100)
+    last_concealed = production(game)["frame"]
     reply = game.a.command("!conceal reveal all")
     bank = banks(game).get(refinery.entity_id)
     revealed = production(game)
     assert bank is not None, reply
-    # Concealed time divided by the boost level, minus what it spent since
-    assert bank == pytest.approx((revealed["frame"] - start) / 5, rel=0.2)
+    # The bank drains by the frames since the reveal, while it boosts
+    assert (
+        (last_concealed - concealed) / 5 - (revealed["frame"] - last_concealed)
+        <= bank
+        <= (revealed["frame"] - before) / 5
+    )
 
-    wait_until(lambda: refinery.entity_id not in banks(game), 40, "the bank spent")
-    spent = production(game)
-    # Five times the normal speed while the bank lasted, normal speed from
-    # then until the test saw it spent
-    seconds = (spent["frame"] - revealed["frame"]) / 60
-    boost_seconds = min(bank / 60, seconds)
-    expected = normal * (5 * boost_seconds + (seconds - boost_seconds))
-    assert revealed["input"] - spent["input"] == pytest.approx(expected, rel=0.3)
+    # The bank lasts from the first update that refines, so the rate is taken
+    # from there, while it lasts
+    start = refining_after(game, revealed)
+    time.sleep(5)
+    boosted = rate_between(start, production(game))
+    assert refinery.entity_id in banks(game), "the bank lasted the measurement"
+    assert boosted == pytest.approx(5 * normal, rel=0.1)
 
-    # Normal speed again
-    assert rate(game, 10) == pytest.approx(normal, rel=0.25)
+    wait_until(lambda: refinery.entity_id not in banks(game), 30, "the bank spent")
+    assert rate(game, 10) == pytest.approx(normal, rel=0.1)
 
 
 def test_approximate_bank_is_capped(game, refinery):

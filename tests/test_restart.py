@@ -64,7 +64,7 @@ def test_concealed_grids_survive_a_restart(game):
     wait_until(lambda: game.is_concealed(grids.PLAIN_STATION), 60, "concealed again")
     assert not game.is_concealed(grids.PROJECTOR_GRID)
     state = game.a.probe("projector", grids.PROJECTOR_ID)
-    assert state == "Probe projector: enabled=1 projecting=1"
+    assert state.startswith("Probe projector: enabled=1 projecting=1 "), state
 
 
 def test_disabled_concealment_stays_disabled_after_a_restart(game):

@@ -40,9 +40,6 @@ class Grid:
     position: tuple
     xml: str
 
-    def block_id(self, n: int) -> int:
-        return self.entity_id + n
-
 
 _grids: list[Grid] = []
 

@@ -153,11 +153,6 @@ public sealed class ProbeCommands : CommandModule
                 .OrderBy(i => i)
         );
 
-    [Command("total", "How many grids the server has.")]
-    [Permission(MyPromoteLevel.Admin)]
-    public string Total() =>
-        $"Probe total: {MyEntities.GetEntities().OfType<MyCubeGrid>().Count(g => !g.MarkedForClose)}";
-
     [Command("timer", "A timer block's countdown.")]
     [Permission(MyPromoteLevel.Admin)]
     public string Timer(long blockId)

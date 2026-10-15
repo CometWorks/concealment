@@ -108,9 +108,12 @@ rig takes the ports, client ids and folders from a test slot of the `se` workspa
 uv run pytest
 ```
 
-A full run takes about 75 minutes. `tests/rig.py` lists the environment variables that
-point the rig at other installations and working copies. To keep the server and clients
-running between runs while you work on a test:
+Where GitHub's API rate limits Magnetar, export `PULSAR_GITHUB_TOKEN` for it to download
+its hub plugins with.
+
+A full run takes about an hour, most of it the three server restarts. `tests/rig.py` lists
+the environment variables that point the rig at other installations and working copies.
+To keep the server and clients running between runs while you work on a test:
 
 ```bash
 uv run python tests/session.py start

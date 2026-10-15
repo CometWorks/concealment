@@ -398,10 +398,6 @@ class Server:
         """SIGTERM makes Magnetar save the world and quit"""
         stop_process(self.pid_file, str(self.config), timeout=180)
 
-    def game_log(self) -> str:
-        logs = sorted(self.data.glob("SpaceEngineersDedicated*.log"))
-        return logs[-1].read_text(errors="replace") if logs else ""
-
 
 # ---------------------------------------------------------------------------
 # Clients

@@ -55,5 +55,71 @@ dotnet build Concealment.sln -p:MagnetarData=$HOME/.config/Magnetar/Magnetar
 
 `Concealment.xml` is the MagnetarHub metadata file for server-side publication.
 
+## Tests
+
+`tests/` holds an in-game test suite. It starts a Magnetar server with this working copy
+of the plugin, joins it with two headless game clients and drives them through the
+[Remote plugin](https://github.com/CometWorks/remote): player A is an administrator,
+player B has no rights. The tests run the chat commands, move the players around and
+check the results on the server. It runs on Linux only.
+
+What it covers:
+
+- Concealing by distance from players with `!conceal run` and the periodic scan, the
+  reveal distance and interval, revealing as a player approaches, either player keeping a
+  grid revealed (`test_conceal.py`)
+- What stops while a grid is concealed and resumes once revealed: timers, programmable
+  blocks, thrust; a concealed ship that keeps drifting; a block woken while its grid is
+  concealed (`test_activity.py`)
+- The three production modes: Off keeps active refineries revealed, Conceal pauses them,
+  Approximate banks the concealed time, catches up faster, caps the bank and saves the
+  banks with the world (`test_production.py`)
+- Excluded subtypes, pirate grids, the remote control keep-alive action, and grids joined
+  by a rotor or a connector concealed and revealed as one (`test_exclusions.py`)
+- The `!conceal` commands, their permissions and bad input (`test_commands.py`)
+- A concealed grid on a client, one player revealing a grid for the other, dynamic
+  concealment rules, a player logging back in to a cryo chamber (`test_clients.py`)
+- Sensors and collisions with concealed grids, the projector of a concealed grid, a world
+  saved while grids are concealed, and Grid Backups' backup before concealment
+  (`test_systems.py`)
+- Grids, config and concealment across a server restart, and a broken config file
+  (`test_restart.py`)
+
+Things the plugin doesn't do yet are strict xfails, so a fix shows up as an unexpected
+pass.
+
+The test world is the game's Empty World with the test players, a faction and a row of
+test grids far apart, written fresh for every run. `tests/probe` is a test-only server
+plugin the server loads next to Concealment: it reports which grids are concealed and the
+state of grids and blocks on the server, and puts a new config into the running plugin,
+so the tests don't need a restart for each config. The server also loads
+[Grid Backups](https://github.com/CometWorks/grid-backups).
+
+### Running
+
+You need the Space Engineers client and Dedicated Server from Steam, Magnetar and Pulsar
+installed, [uv](https://docs.astral.sh/uv/), and working copies of
+[Remote](https://github.com/CometWorks/remote),
+[DirectTransport](https://github.com/CometWorks/direct-transport) and Grid Backups. The
+rig takes the ports, client ids and folders from a test slot of the `se` workspace
+(`notes/parallel-test-work`), and waits for free memory before each process it starts.
+
+```bash
+uv run pytest
+```
+
+Where GitHub's API rate limits Magnetar, export `PULSAR_GITHUB_TOKEN` for it to download
+its hub plugins with.
+
+A full run takes about an hour, most of it the three server restarts. `tests/rig.py` lists
+the environment variables that point the rig at other installations and working copies.
+To keep the server and clients running between runs while you work on a test:
+
+```bash
+uv run python tests/session.py start
+CC_ATTACH=1 CC_KEEP=1 uv run pytest tests/test_conceal.py
+uv run python tests/session.py stop
+```
+
 Functionality is inspired by and reimplements the original Torch plugin
 Concealment by TorchAPI: https://github.com/TorchAPI/Concealment

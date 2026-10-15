@@ -21,6 +21,10 @@ public sealed class ConcealGroup
         "m_currentPlayerId",
         BindingFlags.NonPublic | BindingFlags.Instance);
 
+    // Marks the entities of a concealed grid, so nothing registers them for
+    // updates again while concealed. The game does not use this flag.
+    internal const EntityFlags ConcealedFlag = (EntityFlags)4;
+
     private readonly HashSet<long> projectors = new HashSet<long>();
 
     public long Id { get; }
@@ -109,7 +113,7 @@ public sealed class ConcealGroup
             removeUpdatingComponents?.Invoke(entity);
             MyEntities.UnregisterForUpdate(entity);
             (entity.GameLogic as IMyGameLogicComponent)?.UnregisterForUpdate();
-            entity.Flags |= (EntityFlags)4;
+            entity.Flags |= ConcealedFlag;
 
             if (entity.Hierarchy == null)
                 return;
@@ -132,10 +136,10 @@ public sealed class ConcealGroup
             if (entity.IsPreview)
                 return;
 
+            entity.Flags &= ~ConcealedFlag;
             componentUpdater?.AddEntityComponents(entity);
             MyEntities.RegisterForUpdate(entity);
             (entity.GameLogic as IMyGameLogicComponent)?.RegisterForUpdate();
-            entity.Flags &= ~(EntityFlags)4;
 
             if (entity.Hierarchy == null)
                 return;
@@ -144,6 +148,14 @@ public sealed class ConcealGroup
                 RegisterRecursive((MyEntity)child.Container.Entity);
         }
     }
+
+    // Harmony prefix of MyEntities.RegisterForUpdate. A block of a concealed grid
+    // asks for updates again whenever its NeedsUpdate changes, for example when
+    // a script or a network event starts a timer.
+    internal static bool PrefixRegisterForUpdate(MyEntity entity) =>
+        entity == null || (entity.Flags & ConcealedFlag) == 0;
+
+    public bool SwitchedOffProjector(long entityId) => projectors.Contains(entityId);
 
     public void EnableProjectors()
     {

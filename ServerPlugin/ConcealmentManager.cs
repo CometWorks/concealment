@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using HarmonyLib;
 using Sandbox.Engine.Multiplayer;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
@@ -62,6 +63,12 @@ public sealed class ConcealmentManager : IDisposable
     {
         this.plugin = plugin;
         log = plugin.Log;
+        harmony.Patch(
+            AccessTools.Method(typeof(MyEntities), nameof(MyEntities.RegisterForUpdate), new[] { typeof(MyEntity) }),
+            prefix: new HarmonyMethod(AccessTools.Method(typeof(ServerPlugin.ConcealGroup), nameof(ServerPlugin.ConcealGroup.PrefixRegisterForUpdate))));
+        harmony.Patch(
+            AccessTools.Method(typeof(MyProjectorBase), nameof(MyProjectorBase.GetObjectBuilderCubeBlock)),
+            postfix: new HarmonyMethod(AccessTools.Method(typeof(ConcealmentManager), nameof(PostfixProjectorObjectBuilder))));
         Dynamic = new DynamicConcealmentManager(plugin, harmony);
         Production = new ProductionBoostManager(plugin, harmony);
         Config.PropertyChanged += ConfigOnPropertyChanged;
@@ -143,6 +150,8 @@ public sealed class ConcealmentManager : IDisposable
         var componentUpdater = MySession.Static?.GetComponent<MyEntityComponentUpdater>();
         var revealed = 0;
 
+        UpdateMovedGroups();
+
         foreach (var sphere in GetPlayerViewSpheres(distanceFromPlayers))
             revealed += RevealGridsInSphere(sphere, componentUpdater);
 
@@ -163,7 +172,21 @@ public sealed class ConcealmentManager : IDisposable
 
     public int RevealGridsInSphere(BoundingSphereD sphere)
     {
+        UpdateMovedGroups();
         return RevealGridsInSphere(sphere, MySession.Static?.GetComponent<MyEntityComponentUpdater>());
+    }
+
+    // Concealment switches projectors off while their grid is hidden. A world saved
+    // meanwhile saves them switched on, or they stay off after a restart.
+    private static void PostfixProjectorObjectBuilder(MyProjectorBase __instance, MyObjectBuilder_CubeBlock __result)
+    {
+        var manager = Plugin.Instance?.Manager;
+        if (manager != null &&
+            __result is MyObjectBuilder_FunctionalBlock builder &&
+            manager.ConcealedGroups.Any(g => g.SwitchedOffProjector(__instance.EntityId)))
+        {
+            builder.Enabled = true;
+        }
     }
 
     public int RevealAll()
@@ -357,6 +380,22 @@ public sealed class ConcealmentManager : IDisposable
 
         group.UpdatePostReveal();
         return count;
+    }
+
+    // Concealed grids keep their physics, so a grid concealed while moving drifts
+    // away from the box it was concealed with. Keeps the boxes of concealed
+    // ships where their grids are.
+    private void UpdateMovedGroups()
+    {
+        foreach (var group in ConcealedGroups)
+        {
+            if (group.ProxyId < 0 || group.Grids.All(g => g.IsStatic))
+                continue;
+
+            group.UpdateAabb();
+            var aabb = group.WorldAabb;
+            concealedAabbTree.MoveProxy(group.ProxyId, ref aabb, Vector3D.Zero);
+        }
     }
 
     private int RevealGridsInSphere(BoundingSphereD sphere, MyEntityComponentUpdater componentUpdater)

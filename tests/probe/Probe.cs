@@ -189,7 +189,7 @@ public sealed class ProbeCommands : CommandModule
         return $"Probe data: {block.CustomData.Replace("\n", "|")} frame={Frame}";
     }
 
-    [Command("production", "A production block's state and input inventory mass in kg.")]
+    [Command("production", "A production block's state, input inventory mass in kg and frames since its last production update.")]
     [Permission(MyPromoteLevel.Admin)]
     public string Production(long blockId)
     {
@@ -200,6 +200,7 @@ public sealed class ProbeCommands : CommandModule
             + $"input={F((double)block.InputInventory.CurrentMass)} "
             + $"output={F((double)block.OutputInventory.CurrentMass)} "
             + $"power={F(block.ResourceSink?.CurrentInputByType(MyResourceDistributorComponent.ElectricityId) ?? 0)} "
+            + $"tier={block.CubeGrid.PlayerPresenceTier} since={block.GetFramesFromLastTrigger()} "
             + $"frame={Frame}";
     }
 
@@ -302,7 +303,8 @@ public sealed class ProbeCommands : CommandModule
             return "Probe projector: none";
 
         return $"Probe projector: enabled={(projector.Enabled ? 1 : 0)} "
-            + $"projecting={(projector.ProjectedGrid != null ? 1 : 0)}";
+            + $"projecting={(projector.ProjectedGrid != null ? 1 : 0)} "
+            + $"tier={projector.CubeGrid.PlayerPresenceTier}";
     }
 
     [Command("sensor", "A sensor's state and the entity ids it detects.")]

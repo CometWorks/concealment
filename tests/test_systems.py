@@ -6,7 +6,9 @@ from __future__ import annotations
 import time
 
 import grids
+import pytest
 from conftest import wait_until
+from grids import offset
 from session import parse
 
 
@@ -61,13 +63,23 @@ def test_concealed_grid_collides(game):
         place(game, rammer)
 
 
-def wait_projecting(game) -> None:
+def wait_projecting(game, timeout: float = 15) -> None:
     """A projector switched back on takes a moment to build its projection"""
-    wait_until(lambda: projector(game) == (True, True), 15, "the projection back")
+    wait_until(lambda: projector(game) == (True, True), timeout, "the projection")
 
 
-def test_projector_is_switched_off_while_concealed(game):
-    wait_projecting(game)
+@pytest.fixture
+def projecting(game):
+    """Player A 1 km from the projector, and its projection up. The game
+    stops a projector's projection after 3 minutes of updates while no
+    client has its grid (MyProjectorBase.TierCanProject), and builds it again
+    only once one gets it. 1 km is inside the sync distance and outside the
+    distance the tests conceal at."""
+    game.a.teleport(offset(grids.PROJECTOR_GRID.position, 1000.0), settle=0)
+    wait_projecting(game, timeout=30)
+
+
+def test_projector_is_switched_off_while_concealed(game, projecting):
     game.conceal()
     assert game.is_concealed(grids.PROJECTOR_GRID)
     assert projector(game) == (False, False)
@@ -89,7 +101,7 @@ def test_projector_switched_off_stays_off(game):
         game.a.probe("action", grids.PROJECTOR_ID, "OnOff_On")
 
 
-def test_world_saved_while_concealed_keeps_the_projector_on(game):
+def test_world_saved_while_concealed_keeps_the_projector_on(game, projecting):
     """An autosave or a save command while the grid is concealed must not save
     the projector switched off: after a crash it would stay off"""
     game.conceal()

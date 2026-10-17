@@ -22,27 +22,30 @@ using VRage.Game.Components.Session;
 using VRage.Game.Entity;
 using VRage.Game.ModAPI;
 using VRage.Groups;
-using VRageMath;
 using VRage.ModAPI;
+using VRageMath;
 
 namespace ServerPlugin;
 
 public sealed class ConcealmentManager : IDisposable
 {
-    private static readonly MethodInfo OnEntityClosingMethod = typeof(MyEntityComponentUpdater).GetMethod(
-        "OnEntityClosing",
-        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-        null,
-        new[] { typeof(MyEntity) },
-        null);
+    private static readonly MethodInfo OnEntityClosingMethod =
+        typeof(MyEntityComponentUpdater).GetMethod(
+            "OnEntityClosing",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(MyEntity) },
+            null
+        );
 
     private readonly Plugin plugin;
     private readonly IPluginLogger log;
     private readonly List<ConcealGroup> intersectGroups = new List<ConcealGroup>();
     private readonly Dictionary<long, Timer> keepAliveTimers = new Dictionary<long, Timer>();
 
-    private readonly MyDynamicAABBTreeD concealedAabbTree =
-        new MyDynamicAABBTreeD(MyConstants.GAME_PRUNING_STRUCTURE_AABB_EXTENSION);
+    private readonly MyDynamicAABBTreeD concealedAabbTree = new MyDynamicAABBTreeD(
+        MyConstants.GAME_PRUNING_STRUCTURE_AABB_EXTENSION
+    );
 
     private Action<MyEntity> onEntityClosingAction;
     private GridBackups gridBackups;
@@ -65,11 +68,30 @@ public sealed class ConcealmentManager : IDisposable
         this.plugin = plugin;
         log = plugin.Log;
         harmony.Patch(
-            AccessTools.Method(typeof(MyEntities), nameof(MyEntities.RegisterForUpdate), new[] { typeof(MyEntity) }),
-            prefix: new HarmonyMethod(AccessTools.Method(typeof(ServerPlugin.ConcealGroup), nameof(ServerPlugin.ConcealGroup.PrefixRegisterForUpdate))));
+            AccessTools.Method(
+                typeof(MyEntities),
+                nameof(MyEntities.RegisterForUpdate),
+                new[] { typeof(MyEntity) }
+            ),
+            prefix: new HarmonyMethod(
+                AccessTools.Method(
+                    typeof(ServerPlugin.ConcealGroup),
+                    nameof(ServerPlugin.ConcealGroup.PrefixRegisterForUpdate)
+                )
+            )
+        );
         harmony.Patch(
-            AccessTools.Method(typeof(MyProjectorBase), nameof(MyProjectorBase.GetObjectBuilderCubeBlock)),
-            postfix: new HarmonyMethod(AccessTools.Method(typeof(ConcealmentManager), nameof(PostfixProjectorObjectBuilder))));
+            AccessTools.Method(
+                typeof(MyProjectorBase),
+                nameof(MyProjectorBase.GetObjectBuilderCubeBlock)
+            ),
+            postfix: new HarmonyMethod(
+                AccessTools.Method(
+                    typeof(ConcealmentManager),
+                    nameof(PostfixProjectorObjectBuilder)
+                )
+            )
+        );
         Dynamic = new DynamicConcealmentManager(plugin, harmony);
         Production = new ProductionBoostManager(plugin, harmony);
         Config.PropertyChanged += ConfigOnPropertyChanged;
@@ -108,20 +130,23 @@ public sealed class ConcealmentManager : IDisposable
         var groups = new ConcurrentBag<ConcealGroup>();
         var stopwatch = Stopwatch.StartNew();
 
-        System.Threading.Tasks.Parallel.ForEach(MyCubeGridGroups.Static.Physical.Groups, group =>
-        {
-            var concealGroup = new ConcealGroup(group);
-
-            if (distanceFromPlayers != 0)
+        System.Threading.Tasks.Parallel.ForEach(
+            MyCubeGridGroups.Static.Physical.Groups,
+            group =>
             {
-                var volume = GetGroupWorldAabb(group);
-                if (playerSpheres.Any(s => s.Contains(volume) != ContainmentType.Disjoint))
-                    return;
-            }
+                var concealGroup = new ConcealGroup(group);
 
-            if (!IsExcluded(concealGroup))
-                groups.Add(concealGroup);
-        });
+                if (distanceFromPlayers != 0)
+                {
+                    var volume = GetGroupWorldAabb(group);
+                    if (playerSpheres.Any(s => s.Contains(volume) != ContainmentType.Disjoint))
+                        return;
+                }
+
+                if (!IsExcluded(concealGroup))
+                    groups.Add(concealGroup);
+            }
+        );
 
         log.Debug("Scanned grids in {0}ms.", stopwatch.ElapsedMilliseconds);
         stopwatch.Restart();
@@ -137,11 +162,13 @@ public sealed class ConcealmentManager : IDisposable
         var totalCount = MyEntities.GetEntities().Count(x => x is MyCubeGrid);
 
         if (concealed > 0 && totalCount > 0)
-            log.Info("{0}/{1} grids are concealed ({2:P}), {3} new.",
+            log.Info(
+                "{0}/{1} grids are concealed ({2:P}), {3} new.",
                 concealedCount,
                 totalCount,
                 concealedCount / (float)totalCount,
-                concealed);
+                concealed
+            );
 
         return concealed;
     }
@@ -174,17 +201,25 @@ public sealed class ConcealmentManager : IDisposable
     public int RevealGridsInSphere(BoundingSphereD sphere)
     {
         UpdateMovedGroups();
-        return RevealGridsInSphere(sphere, MySession.Static?.GetComponent<MyEntityComponentUpdater>());
+        return RevealGridsInSphere(
+            sphere,
+            MySession.Static?.GetComponent<MyEntityComponentUpdater>()
+        );
     }
 
     // Concealment switches projectors off while their grid is hidden. A world saved
     // meanwhile saves them switched on, or they stay off after a restart.
-    private static void PostfixProjectorObjectBuilder(MyProjectorBase __instance, MyObjectBuilder_CubeBlock __result)
+    private static void PostfixProjectorObjectBuilder(
+        MyProjectorBase __instance,
+        MyObjectBuilder_CubeBlock __result
+    )
     {
         var manager = Plugin.Instance?.Manager;
-        if (manager != null &&
-            __result is MyObjectBuilder_FunctionalBlock builder &&
-            manager.ConcealedGroups.Any(g => g.SwitchedOffProjector(__instance.EntityId)))
+        if (
+            manager != null
+            && __result is MyObjectBuilder_FunctionalBlock builder
+            && manager.ConcealedGroups.Any(g => g.SwitchedOffProjector(__instance.EntityId))
+        )
         {
             builder.Enabled = true;
         }
@@ -206,7 +241,8 @@ public sealed class ConcealmentManager : IDisposable
     public bool IsExcluded(ConcealGroup group)
     {
         var pirateId = MyPirateAntennas.GetPiratesId();
-        var keepActiveProductionRevealed = Config.ProductionConcealment == ProductionConcealmentMode.Off;
+        var keepActiveProductionRevealed =
+            Config.ProductionConcealment == ProductionConcealmentMode.Off;
 
         foreach (var grid in group.Grids)
         {
@@ -229,40 +265,57 @@ public sealed class ConcealmentManager : IDisposable
         var excludedSubtypes = Config.ExcludedSubtypes;
         var exclude = false;
 
-        System.Threading.Tasks.Parallel.ForEach(group.Grids, (grid, loopState) =>
-        {
-            foreach (var block in grid.GetFatBlocks())
+        System.Threading.Tasks.Parallel.ForEach(
+            group.Grids,
+            (grid, loopState) =>
             {
-                if (block is MyRefinery refinery &&
-                    keepActiveProductionRevealed &&
-                    !refinery.InputInventory.Empty() &&
-                    refinery.IsFunctional &&
-                    refinery.Enabled)
+                foreach (var block in grid.GetFatBlocks())
                 {
-                    log.Debug("{0} exempted refinery ({1} active)", group.GridNames, refinery.CustomName);
-                    exclude = true;
-                    loopState.Stop();
-                    return;
-                }
+                    if (
+                        block is MyRefinery refinery
+                        && keepActiveProductionRevealed
+                        && !refinery.InputInventory.Empty()
+                        && refinery.IsFunctional
+                        && refinery.Enabled
+                    )
+                    {
+                        log.Debug(
+                            "{0} exempted refinery ({1} active)",
+                            group.GridNames,
+                            refinery.CustomName
+                        );
+                        exclude = true;
+                        loopState.Stop();
+                        return;
+                    }
 
-                if (block is MyProductionBlock production && keepActiveProductionRevealed && production.IsProducing)
-                {
-                    log.Debug("{0} exempted production ({1} active)", group.GridNames, production.CustomName);
-                    exclude = true;
-                    loopState.Stop();
-                    return;
-                }
+                    if (
+                        block is MyProductionBlock production
+                        && keepActiveProductionRevealed
+                        && production.IsProducing
+                    )
+                    {
+                        log.Debug(
+                            "{0} exempted production ({1} active)",
+                            group.GridNames,
+                            production.CustomName
+                        );
+                        exclude = true;
+                        loopState.Stop();
+                        return;
+                    }
 
-                var subtype = block.BlockDefinition.Id.SubtypeName;
-                if (excludedSubtypes != null && excludedSubtypes.Contains(subtype))
-                {
-                    log.Debug("{0} exempted subtype {1}", group.GridNames, subtype);
-                    exclude = true;
-                    loopState.Stop();
-                    return;
+                    var subtype = block.BlockDefinition.Id.SubtypeName;
+                    if (excludedSubtypes != null && excludedSubtypes.Contains(subtype))
+                    {
+                        log.Debug("{0} exempted subtype {1}", group.GridNames, subtype);
+                        exclude = true;
+                        loopState.Stop();
+                        return;
+                    }
                 }
             }
-        });
+        );
 
         return exclude;
     }
@@ -304,7 +357,9 @@ public sealed class ConcealmentManager : IDisposable
 
         if (Config.RemoteControlKeepAliveAction)
         {
-            var keepAliveAction = MyAPIGateway.TerminalControls.CreateAction<IMyRemoteControl>("Concealment.KeepAlive");
+            var keepAliveAction = MyAPIGateway.TerminalControls.CreateAction<IMyRemoteControl>(
+                "Concealment.KeepAlive"
+            );
             keepAliveAction.Name = new StringBuilder("Concealment keep alive");
             keepAliveAction.Action = KeepAlive;
             MyAPIGateway.TerminalControls.AddAction<IMyRemoteControl>(keepAliveAction);
@@ -323,13 +378,18 @@ public sealed class ConcealmentManager : IDisposable
         Dynamic.Refresh();
     }
 
-    private void ConfigOnPropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void ConfigOnPropertyChanged(
+        object sender,
+        System.ComponentModel.PropertyChangedEventArgs e
+    )
     {
         configChanged = true;
 
-        if (e.PropertyName == nameof(PluginConfig.DynamicConcealment) ||
-            e.PropertyName == nameof(PluginConfig.DynamicConcealQueryInterval) ||
-            e.PropertyName == nameof(PluginConfig.DynamicConcealScanInterval))
+        if (
+            e.PropertyName == nameof(PluginConfig.DynamicConcealment)
+            || e.PropertyName == nameof(PluginConfig.DynamicConcealQueryInterval)
+            || e.PropertyName == nameof(PluginConfig.DynamicConcealScanInterval)
+        )
         {
             Dynamic.Refresh();
         }
@@ -405,7 +465,10 @@ public sealed class ConcealmentManager : IDisposable
         }
     }
 
-    private int RevealGridsInSphere(BoundingSphereD sphere, MyEntityComponentUpdater componentUpdater)
+    private int RevealGridsInSphere(
+        BoundingSphereD sphere,
+        MyEntityComponentUpdater componentUpdater
+    )
     {
         var revealed = 0;
         concealedAabbTree.OverlapAllBoundingSphere(ref sphere, intersectGroups);
@@ -457,7 +520,13 @@ public sealed class ConcealmentManager : IDisposable
             {
                 keepAliveTimers.Add(
                     block.CubeGrid.EntityId,
-                    new Timer(KeepAliveCallback, block.CubeGrid.EntityId, dueTime, Timeout.InfiniteTimeSpan));
+                    new Timer(
+                        KeepAliveCallback,
+                        block.CubeGrid.EntityId,
+                        dueTime,
+                        Timeout.InfiniteTimeSpan
+                    )
+                );
             }
         }
     }
@@ -509,8 +578,10 @@ public sealed class ConcealmentManager : IDisposable
 
     private void GrantProductionBoost(ConcealGroup group)
     {
-        if (Config.ProductionConcealment != ProductionConcealmentMode.Approximate ||
-            group.ProductionCatchupGridIds.Count == 0)
+        if (
+            Config.ProductionConcealment != ProductionConcealmentMode.Approximate
+            || group.ProductionCatchupGridIds.Count == 0
+        )
         {
             return;
         }
@@ -530,13 +601,17 @@ public sealed class ConcealmentManager : IDisposable
         }
 
         if (count > 0)
-            log.Info("Banked {0} ticks of production catch-up for {1} grids in {2}.",
+            log.Info(
+                "Banked {0} ticks of production catch-up for {1} grids in {2}.",
                 concealedFrames,
                 count,
-                group.GridNames);
+                group.GridNames
+            );
     }
 
-    private static BoundingBoxD GetGroupWorldAabb(MyGroups<MyCubeGrid, MyGridPhysicalGroupData>.Group group)
+    private static BoundingBoxD GetGroupWorldAabb(
+        MyGroups<MyCubeGrid, MyGridPhysicalGroupData>.Group group
+    )
     {
         var first = true;
         var box = default(BoundingBoxD);
@@ -568,8 +643,16 @@ public sealed class ConcealmentManager : IDisposable
 
         var componentUpdater = session.GetComponent<MyEntityComponentUpdater>();
 
-        if (componentUpdater != null && (onEntityClosingAction == null || onEntityClosingAction.Target != componentUpdater))
-            onEntityClosingAction = (Action<MyEntity>)OnEntityClosingMethod.CreateDelegate(typeof(Action<MyEntity>), componentUpdater);
+        if (
+            componentUpdater != null
+            && (onEntityClosingAction == null || onEntityClosingAction.Target != componentUpdater)
+        )
+            onEntityClosingAction =
+                (Action<MyEntity>)
+                    OnEntityClosingMethod.CreateDelegate(
+                        typeof(Action<MyEntity>),
+                        componentUpdater
+                    );
 
         return onEntityClosingAction;
     }

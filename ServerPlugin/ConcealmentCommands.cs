@@ -12,7 +12,10 @@ public sealed class ConcealmentCommands : CommandModule
 {
     private static Plugin Plugin => Plugin.Instance;
 
-    [Command("run", "Conceal grids farther than the configured or supplied distance from online players")]
+    [Command(
+        "run",
+        "Conceal grids farther than the configured or supplied distance from online players"
+    )]
     [Permission(MyPromoteLevel.SpaceMaster)]
     public CommandReply Conceal(double distance = 0)
     {
@@ -85,7 +88,10 @@ public sealed class ConcealmentCommands : CommandModule
     private bool TryGetCallerPosition(out Vector3D position)
     {
         var players = new List<IMyPlayer>();
-        MyAPIGateway.Players.GetPlayers(players, player => player != null && player.SteamUserId == Context.Caller.SteamId);
+        MyAPIGateway.Players.GetPlayers(
+            players,
+            player => player != null && player.SteamUserId == Context.Caller.SteamId
+        );
         var entity = players.FirstOrDefault()?.Controller?.ControlledEntity?.Entity;
 
         if (entity == null)

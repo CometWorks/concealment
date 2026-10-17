@@ -61,16 +61,22 @@ public sealed class ProductionBoostManager : IDisposable
     private static volatile bool dirty;
 
     private static readonly MethodInfo PrefixUpdateProductionMethod =
-        typeof(ProductionBoostManager).GetMethod(nameof(PrefixUpdateProduction),
-            BindingFlags.Static | BindingFlags.NonPublic);
+        typeof(ProductionBoostManager).GetMethod(
+            nameof(PrefixUpdateProduction),
+            BindingFlags.Static | BindingFlags.NonPublic
+        );
 
     private static readonly MethodInfo PostfixUpdateProductionMethod =
-        typeof(ProductionBoostManager).GetMethod(nameof(PostfixUpdateProduction),
-            BindingFlags.Static | BindingFlags.NonPublic);
+        typeof(ProductionBoostManager).GetMethod(
+            nameof(PostfixUpdateProduction),
+            BindingFlags.Static | BindingFlags.NonPublic
+        );
 
     private static readonly MethodInfo PostfixPowerMethod =
-        typeof(ProductionBoostManager).GetMethod(nameof(PostfixPowerConsumption),
-            BindingFlags.Static | BindingFlags.NonPublic);
+        typeof(ProductionBoostManager).GetMethod(
+            nameof(PostfixPowerConsumption),
+            BindingFlags.Static | BindingFlags.NonPublic
+        );
 
     private readonly Harmony harmony;
     private readonly IPluginLogger log;
@@ -113,7 +119,8 @@ public sealed class ProductionBoostManager : IDisposable
         BoostBankFrames.AddOrUpdate(
             gridId,
             Math.Min(maxFrames, granted),
-            (_, existing) => Math.Min(maxFrames, existing + granted));
+            (_, existing) => Math.Min(maxFrames, existing + granted)
+        );
 
         // Start draining from now and seed an initial power decision so the grid can
         // begin boosting immediately rather than waiting for the first staggered check.
@@ -138,11 +145,16 @@ public sealed class ProductionBoostManager : IDisposable
 
                 // Stagger: each grid is offset by a stable phase derived from its id, so
                 // the 30 second checks spread out instead of bunching on the same tick.
-                var offset = (int)(((entry.Key % CheckIntervalFrames) + CheckIntervalFrames) % CheckIntervalFrames);
+                var offset = (int)(
+                    ((entry.Key % CheckIntervalFrames) + CheckIntervalFrames) % CheckIntervalFrames
+                );
                 if ((tick + offset) % CheckIntervalFrames != 0)
                     continue;
 
-                if (MyEntities.TryGetEntityById(entry.Key, out MyEntity entity) && entity is MyCubeGrid grid)
+                if (
+                    MyEntities.TryGetEntityById(entry.Key, out MyEntity entity)
+                    && entity is MyCubeGrid grid
+                )
                     EvaluateGate(grid);
                 else
                     CanBoostGrid[entry.Key] = false;
@@ -202,45 +214,58 @@ public sealed class ProductionBoostManager : IDisposable
 
     private void PatchBlock(Type blockType)
     {
-        var updateProduction = blockType.GetMethod("UpdateProduction",
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        var updateProduction = blockType.GetMethod(
+            "UpdateProduction",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+        );
 
         if (updateProduction != null && prefixed.Add(updateProduction))
         {
-            harmony.Patch(updateProduction,
+            harmony.Patch(
+                updateProduction,
                 prefix: new HarmonyMethod(PrefixUpdateProductionMethod),
-                postfix: new HarmonyMethod(PostfixUpdateProductionMethod));
+                postfix: new HarmonyMethod(PostfixUpdateProductionMethod)
+            );
         }
         else
         {
             log.Warning("ProductionBoost: UpdateProduction not found on {0}", blockType);
         }
 
-        var power = blockType.GetMethod("GetOperationalPowerConsumption",
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        var power = blockType.GetMethod(
+            "GetOperationalPowerConsumption",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+        );
 
         if (power != null && postfixed.Add(power))
             harmony.Patch(power, postfix: new HarmonyMethod(PostfixPowerMethod));
         else
-            log.Warning("ProductionBoost: GetOperationalPowerConsumption not found on {0}", blockType);
+            log.Warning(
+                "ProductionBoost: GetOperationalPowerConsumption not found on {0}",
+                blockType
+            );
     }
 
     private static bool Enabled
     {
         get
         {
-            return PluginRef.TryGetTarget(out var plugin) &&
-                   plugin.ConfigData.ProductionConcealment == ProductionConcealmentMode.Approximate;
+            return PluginRef.TryGetTarget(out var plugin)
+                && plugin.ConfigData.ProductionConcealment == ProductionConcealmentMode.Approximate;
         }
     }
 
     private static long CurrentTick => PluginRef.TryGetTarget(out var plugin) ? plugin.Tick : 0;
 
     private static double BoostLevel =>
-        PluginRef.TryGetTarget(out var plugin) ? Math.Max(1.0, plugin.ConfigData.ProductionBoostLevel) : 1.0;
+        PluginRef.TryGetTarget(out var plugin)
+            ? Math.Max(1.0, plugin.ConfigData.ProductionBoostLevel)
+            : 1.0;
 
     private static double MaxBoostFrames =>
-        PluginRef.TryGetTarget(out var plugin) ? Math.Max(0.0, plugin.ConfigData.MaxBoostHours) * 3600.0 * 60.0 : 0.0;
+        PluginRef.TryGetTarget(out var plugin)
+            ? Math.Max(0.0, plugin.ConfigData.MaxBoostHours) * 3600.0 * 60.0
+            : 0.0;
 
     // Decide whether a grid can currently support the boosted power draw. Hysteresis is
     // built in: a grid that is already boosting keeps boosting while supply meets the
@@ -263,7 +288,9 @@ public sealed class ProductionBoostManager : IDisposable
         double baseConsumption = 0.0;
         foreach (var block in grid.GetFatBlocks().OfType<MyProductionBlock>())
         {
-            if (block.IsProducing && block.BlockDefinition is MyProductionBlockDefinition definition)
+            if (
+                block.IsProducing && block.BlockDefinition is MyProductionBlockDefinition definition
+            )
                 baseConsumption += definition.OperationalPowerConsumption;
         }
 
@@ -302,11 +329,18 @@ public sealed class ProductionBoostManager : IDisposable
     // Bigger steps: scale the frame budget so the block processes boost level times
     // more material this update. The bank is read (not consumed) here so the same
     // multiplier stays consistent with the power patch within one update.
-    private static void PrefixUpdateProduction(MyProductionBlock __instance, ref uint framesFromLastTrigger,
-        out BoostState __state)
+    private static void PrefixUpdateProduction(
+        MyProductionBlock __instance,
+        ref uint framesFromLastTrigger,
+        out BoostState __state
+    )
     {
         var multiplier = GetBoostMultiplier(__instance);
-        __state = new BoostState { OriginalFrames = framesFromLastTrigger, Multiplier = multiplier };
+        __state = new BoostState
+        {
+            OriginalFrames = framesFromLastTrigger,
+            Multiplier = multiplier,
+        };
 
         if (multiplier <= 1.0)
             return;
@@ -399,7 +433,11 @@ public sealed class ProductionBoostManager : IDisposable
             }
             catch (Exception ex)
             {
-                log.Warning(ex, "Failed to load production boost banks from {0}, trying next", path);
+                log.Warning(
+                    ex,
+                    "Failed to load production boost banks from {0}, trying next",
+                    path
+                );
                 BoostBankFrames.Clear();
             }
         }
@@ -427,7 +465,8 @@ public sealed class ProductionBoostManager : IDisposable
                     if (entry.Value <= 0.0)
                         continue;
 
-                    builder.Append("{\"gridId\":")
+                    builder
+                        .Append("{\"gridId\":")
                         .Append(entry.Key.ToString(CultureInfo.InvariantCulture))
                         .Append(",\"frames\":")
                         .Append(entry.Value.ToString("R", CultureInfo.InvariantCulture))
@@ -449,10 +488,11 @@ public sealed class ProductionBoostManager : IDisposable
                     // banksPath is moved to bakPath (overwriting any previous backup).
                     File.Replace(newPath, banksPath, bakPath, ignoreMetadataErrors: true);
                 }
-                catch (Exception replaceEx) when (
-                    replaceEx is PlatformNotSupportedException ||
-                    replaceEx is IOException ||
-                    replaceEx is UnauthorizedAccessException)
+                catch (Exception replaceEx)
+                    when (replaceEx is PlatformNotSupportedException
+                        || replaceEx is IOException
+                        || replaceEx is UnauthorizedAccessException
+                    )
                 {
                     // Fallback for volumes without atomic replace: two quick renames.
                     if (File.Exists(bakPath))
@@ -475,10 +515,20 @@ public sealed class ProductionBoostManager : IDisposable
     {
         gridId = 0;
         frames = 0.0;
-        return TryReadNumber(line, "\"gridId\"", out var gridText) &&
-               long.TryParse(gridText, NumberStyles.Integer, CultureInfo.InvariantCulture, out gridId) &&
-               TryReadNumber(line, "\"frames\"", out var framesText) &&
-               double.TryParse(framesText, NumberStyles.Float, CultureInfo.InvariantCulture, out frames);
+        return TryReadNumber(line, "\"gridId\"", out var gridText)
+            && long.TryParse(
+                gridText,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out gridId
+            )
+            && TryReadNumber(line, "\"frames\"", out var framesText)
+            && double.TryParse(
+                framesText,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out frames
+            );
     }
 
     private static bool TryReadNumber(string line, string key, out string number)
@@ -494,8 +544,17 @@ public sealed class ProductionBoostManager : IDisposable
             start++;
 
         var end = start;
-        while (end < line.Length && (char.IsDigit(line[end]) || line[end] == '-' || line[end] == '+' ||
-                                     line[end] == '.' || line[end] == 'e' || line[end] == 'E'))
+        while (
+            end < line.Length
+            && (
+                char.IsDigit(line[end])
+                || line[end] == '-'
+                || line[end] == '+'
+                || line[end] == '.'
+                || line[end] == 'e'
+                || line[end] == 'E'
+            )
+        )
             end++;
 
         if (end == start)

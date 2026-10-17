@@ -30,7 +30,8 @@ The plugin output is:
 ServerPlugin/bin/Debug/net10.0/Concealment.dll
 ```
 
-The plugin version lives in `Version.Build.props`.
+The plugin version lives in `Version.Build.props`. Magnetar compiles the plugin from source
+without it, so change the assembly attributes at the top of `ServerPlugin/Plugin.cs` with it.
 
 `Directory.Build.props` auto-detects the Dedicated Server (`Dedicated64`) and the Magnetar
 installation holding `PluginSdk.dll` (`Magnetar`). To override them, put your local paths into

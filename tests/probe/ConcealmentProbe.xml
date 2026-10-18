@@ -1,13 +1,15 @@
 <?xml version="1.0"?>
-<PluginData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="GitHubPlugin">
-
-    <!-- Test-only server plugin of the Concealment suite, loaded as a dev folder.
+<PluginData
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:type="GitHubPlugin"
+>
+  <!-- Test-only server plugin of the Concealment suite, loaded as a dev folder.
          Never published to a hub. -->
-    <Id>4E0C7D52-2B8E-4F0B-9C55-6D1A0F3B7E21</Id>
-    <RepoId>CometWorks/concealment</RepoId>
-    <FriendlyName>Concealment Probe</FriendlyName>
-    <Author>CometWorks</Author>
-    <Tooltip>Test hooks for the Concealment test suite</Tooltip>
-    <Commit>TODO Git commit hash</Commit>
-
+  <Id>4E0C7D52-2B8E-4F0B-9C55-6D1A0F3B7E21</Id>
+  <RepoId>CometWorks/concealment</RepoId>
+  <FriendlyName>Concealment Probe</FriendlyName>
+  <Author>CometWorks</Author>
+  <Tooltip>Test hooks for the Concealment test suite</Tooltip>
+  <Commit>TODO Git commit hash</Commit>
 </PluginData>

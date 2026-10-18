@@ -23,7 +23,10 @@ namespace ServerPlugin;
 public sealed class DynamicConcealmentManager : IDisposable
 {
     private static readonly MethodInfo PrefixUpdateMethod =
-        typeof(DynamicConcealmentManager).GetMethod(nameof(PrefixUpdate), BindingFlags.Static | BindingFlags.NonPublic);
+        typeof(DynamicConcealmentManager).GetMethod(
+            nameof(PrefixUpdate),
+            BindingFlags.Static | BindingFlags.NonPublic
+        );
 
     private static readonly string[] PatchTargets =
     {
@@ -32,17 +35,20 @@ public sealed class DynamicConcealmentManager : IDisposable
         nameof(MyEntity.UpdateBeforeSimulation100),
         nameof(MyEntity.UpdateAfterSimulation),
         nameof(MyEntity.UpdateAfterSimulation10),
-        nameof(MyEntity.UpdateAfterSimulation100)
+        nameof(MyEntity.UpdateAfterSimulation100),
     };
 
-    private static readonly ReaderWriterLockSlim ConfigLock =
-        new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
+    private static readonly ReaderWriterLockSlim ConfigLock = new ReaderWriterLockSlim(
+        LockRecursionPolicy.SupportsRecursion
+    );
 
     private static readonly Dictionary<MyObjectBuilderType, TargetInfo> GenericConfig =
         new Dictionary<MyObjectBuilderType, TargetInfo>(MyObjectBuilderType.Comparer);
 
-    private static readonly Dictionary<MyDefinitionId, TargetInfo> SubtypeConfig =
-        new Dictionary<MyDefinitionId, TargetInfo>(MyDefinitionId.Comparer);
+    private static readonly Dictionary<MyDefinitionId, TargetInfo> SubtypeConfig = new Dictionary<
+        MyDefinitionId,
+        TargetInfo
+    >(MyDefinitionId.Comparer);
 
     private static readonly ConditionalWeakTable<MyCubeBlock, BlockInfo> BlockUpdateInfo =
         new ConditionalWeakTable<MyCubeBlock, BlockInfo>();
@@ -107,7 +113,11 @@ public sealed class DynamicConcealmentManager : IDisposable
 
         RebuildFromSettings(Config.DynamicConcealment ?? new List<DynamicConcealmentRule>());
 
-        foreach (var type in GenericConfig.Keys.Concat(SubtypeConfig.Keys.Select(x => x.TypeId)).Distinct())
+        foreach (
+            var type in GenericConfig
+                .Keys.Concat(SubtypeConfig.Keys.Select(x => x.TypeId))
+                .Distinct()
+        )
         {
             try
             {
@@ -120,7 +130,11 @@ public sealed class DynamicConcealmentManager : IDisposable
 
                 if (!typeof(MyEntity).IsAssignableFrom(entityType))
                 {
-                    log.Warning("Type {0}, object builder {1}, is not assignable to MyEntity", entityType, type);
+                    log.Warning(
+                        "Type {0}, object builder {1}, is not assignable to MyEntity",
+                        entityType,
+                        type
+                    );
                     continue;
                 }
 
@@ -153,8 +167,13 @@ public sealed class DynamicConcealmentManager : IDisposable
             {
                 // Harmony patches only methods the type declares; the base types
                 // get theirs in the next rounds of the loop
-                var target = type.GetMethod(name,
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                var target = type.GetMethod(
+                    name,
+                    BindingFlags.Instance
+                        | BindingFlags.Public
+                        | BindingFlags.NonPublic
+                        | BindingFlags.DeclaredOnly
+                );
                 if (target == null || !patchedMethods.Add(target))
                     continue;
 
@@ -163,7 +182,11 @@ public sealed class DynamicConcealmentManager : IDisposable
             }
 
             if (patched > 0)
-                log.Debug("Attached dynamic concealment to {0} update methods on {1}", patched, type);
+                log.Debug(
+                    "Attached dynamic concealment to {0} update methods on {1}",
+                    patched,
+                    type
+                );
 
             type = type.BaseType;
         }
@@ -194,7 +217,10 @@ public sealed class DynamicConcealmentManager : IDisposable
                         continue;
 
                     pair.Value.Config.Add(inherited.Key, inherited.Value);
-                    pair.Value.MaxDistance = Math.Max(pair.Value.MaxDistance, Math.Sqrt(inherited.Value));
+                    pair.Value.MaxDistance = Math.Max(
+                        pair.Value.MaxDistance,
+                        Math.Sqrt(inherited.Value)
+                    );
                 }
             }
 
@@ -209,7 +235,13 @@ public sealed class DynamicConcealmentManager : IDisposable
         {
             if (rule.Distance <= 0 || !TryParseObjectBuilderType(rule.TargetType, out var type))
             {
-                log.Warning("Ignoring dynamic rule {0}/{1} {2} {3}", rule.TargetType, rule.TargetSubtype, rule.ConcealType, rule.Distance);
+                log.Warning(
+                    "Ignoring dynamic rule {0}/{1} {2} {3}",
+                    rule.TargetType,
+                    rule.TargetSubtype,
+                    rule.ConcealType,
+                    rule.Distance
+                );
                 return;
             }
 
@@ -223,7 +255,13 @@ public sealed class DynamicConcealmentManager : IDisposable
                     target = GenericConfig[type] = new TargetInfo();
 
                 target.Merge(rule);
-                log.Debug("Registered dynamic rule {0}/{1} {2} {3}", rule.TargetType, rule.TargetSubtype, rule.ConcealType, rule.Distance);
+                log.Debug(
+                    "Registered dynamic rule {0}/{1} {2} {3}",
+                    rule.TargetType,
+                    rule.TargetSubtype,
+                    rule.ConcealType,
+                    rule.Distance
+                );
                 return;
             }
 
@@ -232,7 +270,13 @@ public sealed class DynamicConcealmentManager : IDisposable
                 subtypeTarget = SubtypeConfig[id] = new TargetInfo();
 
             subtypeTarget.Merge(rule);
-            log.Debug("Registered dynamic rule {0}/{1} {2} {3}", rule.TargetType, rule.TargetSubtype, rule.ConcealType, rule.Distance);
+            log.Debug(
+                "Registered dynamic rule {0}/{1} {2} {3}",
+                rule.TargetType,
+                rule.TargetSubtype,
+                rule.ConcealType,
+                rule.Distance
+            );
         }
     }
 
@@ -335,13 +379,18 @@ public sealed class DynamicConcealmentManager : IDisposable
         if (faction1 == faction2)
             return MyRelationsBetweenPlayerAndBlock.FactionShare;
 
-        return MySession.Static.Factions.GetRelationBetweenFactions(faction1.FactionId, faction2.FactionId).Item1 ==
-               MyRelationsBetweenFactions.Neutral
+        return
+            MySession
+                .Static.Factions.GetRelationBetweenFactions(faction1.FactionId, faction2.FactionId)
+                .Item1 == MyRelationsBetweenFactions.Neutral
             ? MyRelationsBetweenPlayerAndBlock.Neutral
             : MyRelationsBetweenPlayerAndBlock.Enemies;
     }
 
-    private static DynamicConcealType GetConcealType(MyRelationsBetweenPlayerAndBlock relation, bool grid)
+    private static DynamicConcealType GetConcealType(
+        MyRelationsBetweenPlayerAndBlock relation,
+        bool grid
+    )
     {
         switch (relation)
         {
@@ -350,12 +399,16 @@ public sealed class DynamicConcealmentManager : IDisposable
                 return grid ? DynamicConcealType.None : DynamicConcealType.FriendlyCharacters;
 
             case MyRelationsBetweenPlayerAndBlock.Enemies:
-                return grid ? DynamicConcealType.HostileGrids : DynamicConcealType.HostileCharacters;
+                return grid
+                    ? DynamicConcealType.HostileGrids
+                    : DynamicConcealType.HostileCharacters;
 
             case MyRelationsBetweenPlayerAndBlock.Neutral:
             case MyRelationsBetweenPlayerAndBlock.NoOwnership:
             default:
-                return grid ? DynamicConcealType.NeutralGrids : DynamicConcealType.NeutralCharacters;
+                return grid
+                    ? DynamicConcealType.NeutralGrids
+                    : DynamicConcealType.NeutralCharacters;
         }
     }
 
@@ -367,23 +420,32 @@ public sealed class DynamicConcealmentManager : IDisposable
             return false;
 
         var trimmed = value.Trim();
-        return MyObjectBuilderType.TryParse(trimmed, out type) ||
-               MyObjectBuilderType.TryParse("MyObjectBuilder_" + trimmed, out type);
+        return MyObjectBuilderType.TryParse(trimmed, out type)
+            || MyObjectBuilderType.TryParse("MyObjectBuilder_" + trimmed, out type);
     }
 
     private static Type TryGetProducedEntityType(MyObjectBuilderType objectBuilderType)
     {
-        var factoryType = AccessTools.TypeByName("Sandbox.Game.Entities.Cube.MyCubeBlockFactory") ??
-                          Type.GetType("Sandbox.Game.Entities.Cube.MyCubeBlockFactory, Sandbox.Game");
+        var factoryType =
+            AccessTools.TypeByName("Sandbox.Game.Entities.Cube.MyCubeBlockFactory")
+            ?? Type.GetType("Sandbox.Game.Entities.Cube.MyCubeBlockFactory, Sandbox.Game");
         var field = factoryType == null ? null : AccessTools.Field(factoryType, "m_objectFactory");
         var factory = field?.GetValue(null);
-        var method = factory == null ? null : AccessTools.Method(factory.GetType(), "TryGetProducedType", new[] { typeof(MyObjectBuilderType) });
+        var method =
+            factory == null
+                ? null
+                : AccessTools.Method(
+                    factory.GetType(),
+                    "TryGetProducedType",
+                    new[] { typeof(MyObjectBuilderType) }
+                );
         return method?.Invoke(factory, new object[] { objectBuilderType }) as Type;
     }
 
     private sealed class TargetInfo
     {
-        public Dictionary<DynamicConcealType, double> Config { get; } = new Dictionary<DynamicConcealType, double>();
+        public Dictionary<DynamicConcealType, double> Config { get; } =
+            new Dictionary<DynamicConcealType, double>();
         public double MaxDistance;
 
         public void Merge(DynamicConcealmentRule rule)
@@ -409,7 +471,8 @@ public sealed class DynamicConcealmentManager : IDisposable
         public object Sync { get; } = new object();
         public int ConfigVersion = -1;
         public double NextQueryDistance;
-        public readonly List<WeakReference<MyEntity>> NearbyEntities = new List<WeakReference<MyEntity>>();
+        public readonly List<WeakReference<MyEntity>> NearbyEntities =
+            new List<WeakReference<MyEntity>>();
         public DateTime LastNearbyUpdate;
 
         public void ScheduleRefresh()
@@ -429,11 +492,19 @@ public sealed class DynamicConcealmentManager : IDisposable
 
                 var aabb = grid.PositionComp.WorldAABB.Inflate(NextQueryDistance);
                 var list = new List<MyEntity>();
-                MyGamePruningStructure.GetTopMostEntitiesInBox(ref aabb, list, MyEntityQueryType.Static);
+                MyGamePruningStructure.GetTopMostEntitiesInBox(
+                    ref aabb,
+                    list,
+                    MyEntityQueryType.Static
+                );
 
                 var seconds = Math.Max(0, (DateTime.Now - LastNearbyUpdate).TotalSeconds);
                 aabb = aabb.Inflate(Math.Min(seconds * 30, NextQueryDistance));
-                MyGamePruningStructure.GetTopMostEntitiesInBox(ref aabb, list, MyEntityQueryType.Dynamic);
+                MyGamePruningStructure.GetTopMostEntitiesInBox(
+                    ref aabb,
+                    list,
+                    MyEntityQueryType.Dynamic
+                );
 
                 lock (Sync)
                 {
@@ -478,11 +549,18 @@ public sealed class DynamicConcealmentManager : IDisposable
         {
             try
             {
-                if (!blockRef.TryGetTarget(out var block) || block.MarkedForClose || block.CubeGrid == null)
+                if (
+                    !blockRef.TryGetTarget(out var block)
+                    || block.MarkedForClose
+                    || block.CubeGrid == null
+                )
                     return;
 
                 var gridInfo = GetConcealInfo(block.CubeGrid);
-                gridInfo.NextQueryDistance = Math.Max(gridInfo.NextQueryDistance, Config.MaxDistance);
+                gridInfo.NextQueryDistance = Math.Max(
+                    gridInfo.NextQueryDistance,
+                    Config.MaxDistance
+                );
 
                 if (gridInfo.LastNearbyUpdate + QueryInterval < DateTime.Now)
                     gridInfo.ScheduleRefresh();
@@ -510,13 +588,17 @@ public sealed class DynamicConcealmentManager : IDisposable
                                     worstRelation = relation;
                             }
 
-                            type = GetConcealType((MyRelationsBetweenPlayerAndBlock)worstRelation, grid: true);
+                            type = GetConcealType(
+                                (MyRelationsBetweenPlayerAndBlock)worstRelation,
+                                grid: true
+                            );
                         }
                         else if (entity is MyCharacter character)
                         {
                             type = GetConcealType(
                                 GetRelationTolerant(block.OwnerId, character.GetPlayerIdentityId()),
-                                grid: false);
+                                grid: false
+                            );
                         }
 
                         if (type == DynamicConcealType.None)
@@ -524,7 +606,8 @@ public sealed class DynamicConcealmentManager : IDisposable
 
                         var distanceSquared = Vector3D.DistanceSquared(
                             entity.PositionComp.WorldVolume.Center,
-                            block.PositionComp.WorldVolume.Center);
+                            block.PositionComp.WorldVolume.Center
+                        );
 
                         if (distanceSquared < nearestByType[(int)type])
                             nearestByType[(int)type] = distanceSquared;

@@ -19,7 +19,8 @@ public sealed class ConcealGroup
 {
     private static readonly FieldInfo CurrentPlayerIdField = typeof(MyCryoChamber).GetField(
         "m_currentPlayerId",
-        BindingFlags.NonPublic | BindingFlags.Instance);
+        BindingFlags.NonPublic | BindingFlags.Instance
+    );
 
     // Marks the entities of a concealed grid, so nothing registers them for
     // updates again while concealed. The game does not use this flag.
@@ -111,6 +112,12 @@ public sealed class ConcealGroup
                 return;
 
             removeUpdatingComponents?.Invoke(entity);
+
+            // An entity whose NeedsUpdate changed this frame, like a projector
+            // switched off above, is queued for registering again. Unregistering
+            // it then only drops it from that queue and keeps its registration,
+            // so it takes a second call.
+            MyEntities.UnregisterForUpdate(entity);
             MyEntities.UnregisterForUpdate(entity);
             (entity.GameLogic as IMyGameLogicComponent)?.UnregisterForUpdate();
             entity.Flags |= ConcealedFlag;
@@ -159,7 +166,9 @@ public sealed class ConcealGroup
 
     public void EnableProjectors()
     {
-        foreach (var projector in projectors.Select(x => MyEntities.GetEntityById(x) as MyProjectorBase))
+        foreach (
+            var projector in projectors.Select(x => MyEntities.GetEntityById(x) as MyProjectorBase)
+        )
             if (projector != null)
                 projector.Enabled = true;
 

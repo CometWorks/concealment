@@ -3,7 +3,7 @@ working copy, and two headless game clients that join it over DirectTransport
 and are driven through the Remote plugin.
 
 Every port, client id and folder comes from a test slot of the workspace
-(notes/parallel-test-work/NOTE.md in the se workspace), so a run doesn't
+(testing/parallel-test-work/README.md in the se workspace), so a run doesn't
 collide with other tests on the machine. CC_TASK names the slot; it is claimed
 on first use and kept until released with slot.sh. CC_SLOT skips the claim.
 
@@ -20,7 +20,7 @@ floor (SE_RAM_FLOOR_GIB) and holds the shared test lock.
 
 Paths, all overridable by environment variables:
 
-    CC_WORKSPACE             the se workspace, for its notes/ (default: the
+    CC_WORKSPACE             the se workspace, for its testing/ (default: the
                              folder that holds se1/plugins/concealment)
     CC_MAGNETAR              Magnetar install (~/.config/Magnetar)
     CC_PULSAR                Pulsar install the client folders are copied from
@@ -56,8 +56,8 @@ REPO = Path(__file__).resolve().parent.parent
 TESTS = REPO / "tests"
 PROBE = TESTS / "probe"
 WORKSPACE = Path(os.environ.get("CC_WORKSPACE", REPO.parents[2]))
-PARALLEL = WORKSPACE / "notes" / "parallel-test-work"
-NEW_PULSAR = WORKSPACE / "notes" / "pulsar-dev-instances" / "new-pulsar-instance.sh"
+PARALLEL = WORKSPACE / "testing" / "parallel-test-work"
+NEW_PULSAR = WORKSPACE / "testing" / "pulsar-dev-instances" / "new-pulsar-instance.sh"
 MAGNETAR = Path(os.environ.get("CC_MAGNETAR", HOME / ".config/Magnetar"))
 PULSAR = Path(os.environ.get("CC_PULSAR", HOME / ".config/Pulsar"))
 STEAM = HOME / ".steam/steam/steamapps/common"
@@ -90,7 +90,7 @@ CONCEALMENT_ID = "C88741F0-0AA5-4263-BD78-5D21467A84D3"
 PROBE_ID = "4E0C7D52-2B8E-4F0B-9C55-6D1A0F3B7E21"
 GRID_BACKUPS_ID = "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C"
 
-# Measured RSS (notes/parallel-test-work/NOTE.md); the server is a guess
+# Measured RSS (testing/parallel-test-work/README.md); the server is a guess
 CLIENT_GIB = 3.7
 SERVER_GIB = 4.0
 

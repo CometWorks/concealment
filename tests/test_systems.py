@@ -119,10 +119,13 @@ def test_world_saved_while_concealed_keeps_the_projector_on(game, projecting):
 
 
 def test_grid_backups_backs_up_before_concealment(game):
-    """Every concealed grid group gets a backup, but not a projector's projection"""
+    """A concealed grid group gets a backup if Grid Backups' filters let it
+    through: the backup station does, the smaller grids and a projector's
+    projection don't"""
     before = set(game.server.backup_files())
     game.conceal()
     time.sleep(3)
     new = set(game.server.backup_files()) - before
-    assert any(f"_{grids.BACKUP_STATION.entity_id}" in str(p) for p in new)
-    assert not any(p.parent.name.startswith("Projection_") for p in new)
+    station = f"_{grids.BACKUP_STATION.entity_id}"
+    assert any(p.parent.name.endswith(station) for p in new)
+    assert all(p.parent.name.endswith(station) for p in new), sorted(new)

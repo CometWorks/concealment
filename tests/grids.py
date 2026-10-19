@@ -403,10 +403,11 @@ SHARED_STATION = add(
 
 # --- Grid Backups -------------------------------------------------------------
 
+# The only grid with Grid Backups' MinBlocksForBackup blocks (session.py)
 BACKUP_STATION = add(
     "Backup station",
     site(16),
-    armor(box(3, 3, 3)) + battery((1, 3, 1), _id(len(_grids)) + 100),
+    armor(box(5, 3, 5)) + battery((2, 3, 2), _id(len(_grids)) + 100),
 )
 
 ALL = list(_grids)

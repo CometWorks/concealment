@@ -49,15 +49,16 @@ DEFAULT_CONFIG = {
     "DynamicConcealment": [],
 }
 
-# Grid Backups backs up nothing on its own: no grid has enough blocks for its
-# scans. A backup can only come from a call of its public entry points.
+# Grid Backups backs up only the backup station, the one grid with enough
+# blocks. Its scans back it up once at the start; the tests look for the
+# backup it takes before Concealment conceals the station.
 GRID_BACKUPS_CONFIG = {
     "Enabled": True,
     "UseQuasarConfigFolder": True,
     "BackupNobodyGrids": True,
     "ScanIntervalSeconds": 86400,
     "MinMinutesSinceLastSave": 0,
-    "MinBlocksForBackup": 1000000,
+    "MinBlocksForBackup": 60,
     "BackupIfSteady": False,
     "MaxBlockCountChange": 0,
 }

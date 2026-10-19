@@ -45,8 +45,10 @@ Magnetar stores configuration through the Plugin SDK config system.
 
 If the server also runs [Grid Backups](https://github.com/CometWorks/grid-backups), Concealment
 asks it for a backup of each grid group just before concealing it. Grid Backups decides whether
-to write one: its `BackupBeforeConcealment` option and its minimum time between two backups of
-a grid (`MinMinutesSinceLastSave`) apply.
+to write one: its `BackupBeforeConcealment` option, its grid filters (`BackupNobodyGrids`,
+`BackupNpcGrids`, `MinBlocksForBackup`) and its minimum time between two backups of a grid
+(`MinMinutesSinceLastSave`) apply. Grid Backups 1.1.0 and later answer that before Concealment
+takes the grids' object builders, so a group that gets no backup costs next to nothing.
 
 ## Development
 

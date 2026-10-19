@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Sandbox.Game.Entities;
 using Shared.Logging;
 using VRage.Game;
 
@@ -14,14 +15,17 @@ namespace ServerPlugin;
 public sealed class GridBackups
 {
     private readonly Func<List<MyObjectBuilder_CubeGrid>, long, bool> backupBeforeConcealment;
+    private readonly Func<List<MyCubeGrid>, bool> wouldBackupBeforeConcealment;
     private readonly IPluginLogger log;
 
     private GridBackups(
         Func<List<MyObjectBuilder_CubeGrid>, long, bool> backupBeforeConcealment,
+        Func<List<MyCubeGrid>, bool> wouldBackupBeforeConcealment,
         IPluginLogger log
     )
     {
         this.backupBeforeConcealment = backupBeforeConcealment;
+        this.wouldBackupBeforeConcealment = wouldBackupBeforeConcealment;
         this.log = log;
     }
 
@@ -59,7 +63,18 @@ public sealed class GridBackups
                         typeof(Func<List<MyObjectBuilder_CubeGrid>, long, bool>),
                         instance
                     );
-            return new GridBackups(call, log);
+            // Grid Backups 1.1.0 and later answer whether they would back up a
+            // group, so the object builders are built only for a backup they write
+            var would = type.GetMethod(
+                "WouldBackupBeforeConcealment",
+                new[] { typeof(List<MyCubeGrid>) }
+            );
+            var ask =
+                would?.ReturnType == typeof(bool)
+                    ? (Func<List<MyCubeGrid>, bool>)
+                        would.CreateDelegate(typeof(Func<List<MyCubeGrid>, bool>), instance)
+                    : null;
+            return new GridBackups(call, ask, log);
         }
 
         return null;
@@ -67,8 +82,8 @@ public sealed class GridBackups
 
     // Takes the object builders on the calling thread, before anything changes the
     // grids, and lets Grid Backups write the file on a worker thread, as its own
-    // scans do. Grid Backups owns the policy: whether the feature is on, and the
-    // minimum time between two backups of the same grid.
+    // scans do. Grid Backups owns the policy: whether the feature is on, its grid
+    // filters, and the minimum time between two backups of the same grid.
     public void BackUp(ConcealGroup group)
     {
         // A projector's projection is a grid group of its own, not worth a backup
@@ -78,6 +93,9 @@ public sealed class GridBackups
 
         try
         {
+            if (wouldBackupBeforeConcealment != null && !wouldBackupBeforeConcealment(grids))
+                return;
+
             var owner = grids
                 .OrderByDescending(g => g.BlocksCount)
                 .First()

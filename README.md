@@ -110,7 +110,7 @@ installed, [uv](https://docs.astral.sh/uv/), and working copies of
 [Remote](https://github.com/CometWorks/remote),
 [DirectTransport](https://github.com/CometWorks/direct-transport) and Grid Backups. The
 rig takes the ports, client ids and folders from a test slot of the `se` workspace
-(`notes/parallel-test-work`), and waits for free memory before each process it starts.
+(`testing/parallel-test-work`), and waits for free memory before each process it starts.
 
 ```bash
 uv run pytest

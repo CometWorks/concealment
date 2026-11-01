@@ -5,6 +5,8 @@
     <RootNamespace>ServerPlugin</RootNamespace>
     <AssemblyName>Concealment</AssemblyName>
     <LangVersion>14</LangVersion>
+    <Copyright>Copyright (c) 2026 CometWorks</Copyright>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
 
     <!-- Target platforms on Windows and Linux -->
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows'))"
@@ -305,6 +307,11 @@
 
   <ItemGroup>
     <None Include="app.config" />
+    <None Include="$(RepoRoot)LICENSE;$(RepoRoot)NOTICE"
+          Link="%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Pack="true" PackagePath="" />
   </ItemGroup>
 
   <ItemGroup>
@@ -381,6 +388,11 @@
       Condition="'$(PluginDirectory)' != ''"
       SourceFiles="$(TargetPath)"
       DestinationFolder="$(PluginDirectory)"
+    />
+    <Copy
+      Condition="'$(PluginDirectory)' != ''"
+      SourceFiles="$(TargetDir)LICENSE;$(TargetDir)NOTICE"
+      DestinationFolder="$(PluginDirectory)$(PathSeparator)$(TargetName).licenses"
     />
     <Copy
       Condition="'$(PluginDirectory)' != '' And Exists('$(TargetDir)$(TargetName).pdb')"

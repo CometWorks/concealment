@@ -2,6 +2,32 @@
 
 Server-only Space Engineers plugin for Magnetar.
 
+## License
+
+Copyright (c) 2026 CometWorks.
+
+Concealment is free software licensed under the [GNU Affero General Public
+License version 3 only](LICENSE) (`AGPL-3.0-only`), without any warranty.
+
+The licensing transition is dated 1 November 2026. The last MIT snapshot is
+preserved by the [`archive/mit` tag](https://github.com/CometWorks/concealment/releases/tag/archive/mit)
+at commit `087a234a085e9257f6d96c4233e8b8fc3f84b5e2`.
+Permissions already granted under MIT remain in effect. The original MIT notice
+is retained in [NOTICE](NOTICE) for inherited code; the current distribution is
+not dual-licensed.
+
+If you modify Concealment and let users interact with it over a network, AGPL
+section 13 requires a prominent offer of your version's Corresponding Source,
+including your changes, at no charge. When distributing binaries, meet the
+Corresponding Source requirements of section 6 and keep the applicable copyright,
+license and warranty notices. Source must match the version you run or distribute;
+an upstream link alone does not provide the source of a modified fork.
+
+Source is available at https://github.com/CometWorks/concealment, with build
+instructions below. Binary builds include `LICENSE` and `NOTICE` alongside the
+plugin; local Magnetar deployment keeps them in `Local/Concealment.licenses`.
+Separately licensed dependencies retain their own licenses and notices.
+
 ## Prerequisites
 
 - [Python 3.12](https://python.org) (requires 3.12 or newer)

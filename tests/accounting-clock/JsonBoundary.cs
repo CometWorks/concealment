@@ -75,6 +75,15 @@ static class JsonBoundary
             }
             Check(bytes.SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(p, OfflineProfile.Json)), "input never rewritten");
         }
+        var hostDelegates = host.GetFields(BindingFlags.NonPublic | BindingFlags.Static).Where(f => typeof(Delegate).IsAssignableFrom(f.FieldType)).ToArray();
+        var clusterCallbacks = hostDelegates.Select(f => f.GetValue(null)).ToArray();
+        typeof(AccountingApi).GetField("owner", BindingFlags.NonPublic | BindingFlags.Static)!.SetValue(null, "Cluster");
+        AccountingApi.EndStandaloneSession();
+        Check(hostDelegates.Select(f => f.GetValue(null)).SequenceEqual(clusterCallbacks), "standalone cleanup cannot alter Cluster-owned callbacks");
+        typeof(AccountingApi).GetField("owner", BindingFlags.NonPublic | BindingFlags.Static)!.SetValue(null, "Standalone");
+        AccountingApi.EndStandaloneSession();
+        Check(host.GetFields(BindingFlags.NonPublic | BindingFlags.Static).Where(f => typeof(Delegate).IsAssignableFrom(f.FieldType)).All(f => f.GetValue(null) == null),
+            "stopped standalone host leaves no world delegate references");
         Console.WriteLine($"PASS {checks} production-DLL required-discriminator Read/Model/Apply/nested-Record checks; Apply uses inert host and empty builders");
         return checks;
     }

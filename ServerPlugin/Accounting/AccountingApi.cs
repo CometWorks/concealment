@@ -53,6 +53,16 @@ public static class AccountingApi
         OfflineRateCache.Reset();
         configured = false;
         owner = null;
+        // Persistence can outlive scheduling; canceled jobs and detached hosts
+        // must not retain callable delegates to the old world.
+        Host.ClockMilliseconds = null;
+        Host.Setting = null;
+        Host.CanProfile = null;
+        Host.Generation = null;
+        Host.CanObserve = null;
+        Host.IsFrozen = null;
+        Host.CanMeasure = null;
+        Host.AwaitingZonePower = null;
     }
     public static VRageMath.Vector3D SolarPivot(VRageMath.Vector3 pivot, VRageMath.MatrixD matrix) => AccountingEngine.SolarPivot(pivot, matrix);
     public static bool CanMeasureAssembler(bool repeat, bool disassemble, double progress) => AccountingEngine.CanMeasureAssembler(repeat, disassemble, progress);

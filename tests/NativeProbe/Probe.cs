@@ -165,6 +165,7 @@ public sealed partial class Probe : IPlugin
             coreCopies = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.GetType("Concealment.Accounting.AccountingApi", false) != null),
             oldGrantController = PluginType.Assembly.GetType("Shared.Concealment.ProductionBoostManager", false) != null,
             hostOwner,
+            hostCallbackCount = host.GetFields(BindingFlags.NonPublic | BindingFlags.Static).Count(f => typeof(Delegate).IsAssignableFrom(f.FieldType) && f.GetValue(null) != null),
             accountingClock = hostOwner == null ? null : new {
                 frame = engine.GetProperty("Frame", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),
                 maxFrames = engine.GetProperty("MaxFrames", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),

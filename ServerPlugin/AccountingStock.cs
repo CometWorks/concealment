@@ -64,6 +64,25 @@ internal static class AccountingStock
 
     internal static double[] Pose(VRageMath.MatrixD m) => [m.M41, m.M42, m.M43, m.M11, m.M12, m.M13, m.M21, m.M22, m.M23, m.M31, m.M32, m.M33];
     internal static double[][] Poses(IEnumerable<MyCubeGrid> grids) => grids.Select(g => Pose(g.WorldMatrix)).ToArray();
+    internal static bool SameLoadedPoses(MyCubeGrid[] grids, double[][] saved, double[][] loaded)
+    {
+        if (saved == null || saved.Length != grids.Length || loaded.Length != grids.Length) return false;
+        for (int i = 0; i < grids.Length; i++)
+        {
+            if (SamePoses([saved[i]], [loaded[i]])) continue;
+            var p = saved[i];
+            if (p.Length != 12 || p.Any(v => !double.IsFinite(v)) || grids[i].Physics == null) return false;
+            var matrix = new VRageMath.MatrixD(p[3], p[4], p[5], 0, p[6], p[7], p[8], 0, p[9], p[10], p[11], 0, p[0], p[1], p[2], 1);
+            var physics = grids[i].Physics;
+            // Match the engine's exact double -> cluster-local float -> double
+            // publication, including center/offset. No positional tolerance.
+            VRageMath.MatrixD native = physics.GetRigidBodyMatrix(matrix);
+            native.Translation += physics.Offset;
+            native.Translation -= VRageMath.Vector3D.TransformNormal(physics.Center, ref native);
+            if (!SamePoses([Pose(native)], [loaded[i]])) return false;
+        }
+        return true;
+    }
     internal static bool SamePoses(double[][] before, double[][] after) => before.Length == after.Length
         && before.Zip(after).All(p => p.First.Length == 12 && p.Second.Length == 12
             && p.First.Zip(p.Second).Select((v, i) => double.IsFinite(v.First) && double.IsFinite(v.Second)

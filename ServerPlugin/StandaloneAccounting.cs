@@ -254,22 +254,11 @@ internal sealed class StandaloneAccounting : IDisposable
             ?? throw new InvalidDataException("Saved mechanical grid pose is missing")).ToArray();
         if (links.Count > 0)
         {
-            if (claim.Poses == null || !AccountingStock.SamePoses(claim.Poses, poses.Select(AccountingStock.Pose).ToArray()))
+            var ordered = grids.Values.OrderBy(g => g.EntityId).ToArray();
+            if (!AccountingStock.SameLoadedPoses(ordered, claim.Poses, poses.Select(AccountingStock.Pose).ToArray()))
                 throw new InvalidDataException("Saved mechanical checkpoint pose changed");
-            int index = 0;
-            foreach (var grid in grids.Values.OrderBy(g => g.EntityId))
-            {
-                var savedPose = poses[index++];
-                var physics = grid.Physics ?? throw new InvalidDataException("Missing loaded mechanical physics");
-                // Native bodies round the saved double transform through their
-                // cluster-local float matrix before publishing it back to the grid.
-                VRageMath.MatrixD native = physics.GetRigidBodyMatrix(savedPose);
-                native.Translation += physics.Offset;
-                native.Translation -= VRageMath.Vector3D.TransformNormal(physics.Center, ref native);
-                if (!AccountingStock.SamePoses([AccountingStock.Pose(savedPose)], [AccountingStock.Pose(grid.WorldMatrix)])
-                    && !AccountingStock.SamePoses([AccountingStock.Pose(native)], [AccountingStock.Pose(grid.WorldMatrix)]))
-                    throw new InvalidDataException("Loaded mechanical checkpoint pose changed");
-            }
+            if (!AccountingStock.SameLoadedPoses(ordered, claim.Poses, AccountingStock.Poses(ordered)))
+                throw new InvalidDataException("Loaded mechanical checkpoint pose changed");
         }
         // Native BEFORE_NEXT_FRAME also runs unrelated block work. Only complete
         // its saved-ID structural branch; production guards never open.
@@ -292,16 +281,6 @@ internal sealed class StandaloneAccounting : IDisposable
         {
             if (!AccountingStock.SamePoses(loadedPoses, AccountingStock.Poses(grids.Values.OrderBy(g => g.EntityId))))
                 throw new InvalidDataException("Native mechanical attachment moved the saved group");
-            // Retain the original checkpoint pose, never a replacement claim or
-            // tolerance. Sleeping native bodies avoid attachment solver jitter
-            // while held; an external movement still invalidates settlement.
-            int index = 0;
-            foreach (var grid in grids.Values.OrderBy(g => g.EntityId))
-            {
-                grid.WorldMatrix = poses[index++];
-                grid.Physics.RigidBody.Deactivate();
-                grid.Physics.RigidBody2?.Deactivate();
-            }
         }
 
         void ValidateLink(MyMechanicalConnectionBlockBase connection, MyAttachableTopBlockBase top)
@@ -427,7 +406,9 @@ internal sealed class StandaloneAccounting : IDisposable
             if (record.World != AccountingStock.World || group.Grids.Any(g => g.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(g.EntityId), g))
                 || !record.Members.Order().SequenceEqual(group.Grids.Select(g => g.EntityId).Order())
                 || AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null) != record.Signature
-                || record.Poses != null && !AccountingStock.SamePoses(record.Poses, AccountingStock.Poses(group.Grids.OrderBy(g => g.EntityId)))
+                || record.Poses != null && !(group.HoldsMechanicalPhysics
+                    ? AccountingStock.SameLoadedPoses(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses, AccountingStock.Poses(group.Grids.OrderBy(g => g.EntityId)))
+                    : AccountingStock.SamePoses(record.Poses, AccountingStock.Poses(group.Grids.OrderBy(g => g.EntityId))))
                 || Groups(group).SelectMany(g => g).Count() != record.Members.Length) throw new InvalidDataException("Accounting identity/topology/settings changed while concealed");
             original = AccountingStock.Builders(group.Grids);
             if (AccountingStock.Fingerprint(original.Values.Cast<MyObjectBuilder_CubeGrid>()) != record.StockHash) throw new InvalidDataException("Live stocks/queues/content changed while concealed");

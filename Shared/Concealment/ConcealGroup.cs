@@ -29,6 +29,7 @@ public sealed class ConcealGroup
     private readonly HashSet<long> projectors = new HashSet<long>();
 #if MAGNETAR
     private readonly List<(MyMechanicalConnectionBlockBase Block, Havok.HkConstraint Constraint)> heldConstraints = new();
+    internal bool HoldsMechanicalPhysics => heldConstraints.Count > 0;
 
     internal void HoldMechanicalPhysics()
     {
@@ -159,11 +160,10 @@ public sealed class ConcealGroup
         if (ConcealmentRuntime.ClusterMode) return;
 #if MAGNETAR
         foreach (var held in heldConstraints)
-        {
             if (!ReferenceEquals(held.Block.Constraint, held.Constraint) || held.Constraint.IsDisposed)
                 throw new InvalidOperationException("Held mechanical constraint changed before reveal");
+        foreach (var held in heldConstraints)
             held.Constraint.Enabled = true;
-        }
         heldConstraints.Clear();
 #endif
         foreach (var grid in Grids)

@@ -18,7 +18,9 @@ namespace Sandbox.Game.World
     public sealed class MySession
     {
         public static MySession Static;
+        public static event Action BeforeLoading;
         public static event Action OnUnloading;
+        public static void Loading() => BeforeLoading?.Invoke();
         public bool Ready;
         public bool IsUnloading;
         public string CurrentPath;

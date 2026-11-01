@@ -98,6 +98,40 @@ Client-hosted production banks are stored in `ConcealmentBanks.jsonl` inside
 each world's save folder, so switching worlds does not mix catch-up time.
 Magnetar retains its existing bank file under the server's user-data folder.
 
+## Offline accounting
+
+Standalone Concealment enables whole-group accounting by default with `Approximate`.
+It profiles eligible groups while live, suspends their native updates, and settles
+production, power, fuel, gas, storage and zone upkeep before revealing them. The
+elapsed compensation cap defaults to 72 hours (`OfflineCompensationMaxHours`);
+excess is forfeited through the actual reveal time. Explicit `Off` and `Conceal`
+choices keep their meanings. Native world time advances 16 ms per engine frame;
+resource phases retain native 60 Hz units, and server downtime earns nothing.
+
+Profiles, stock identities and application receipts live in grid object builders,
+with the world checkpoint clock. Changed stock/content/topology or a torn native
+checkpoint is quarantined without overwriting stocks or revealing the group.
+Keep the complete world and the matching plugin together for backup or rollback.
+Old binaries cannot interpret new claims; downgrade only with a pre-migration world.
+
+`ConcealmentBanks.jsonl` is immutable migration provenance. Existing positive banks
+drain using the original configured native production/power multiplier. They create
+no new grants and exclude the entire physical/logical accounting group from new
+compensation until spent. `MaxBoostHours` still means old ONLINE bank units, never
+elapsed offline hours. Remaining bank and import identity are saved with native
+stocks. Changed identity/topology quarantines credit; a merge retains removed-grid
+credit on its survivor. Restore the cutover/provenance files with the world; their
+absence or disagreement cannot safely reconstruct historical stock entitlement.
+The old file format did not provide a transaction with native world saves.
+
+A nonblank `CLUSTER_GATEWAY_REGISTRY` fixes configured Cluster mode before managers
+or hooks are created. All autonomous Concealment scans, dynamic suppression, jobs,
+boost migration, commands and disposal reveal are inactive in that mode, regardless
+of connection/provider health or saved settings. Mode changes require a restart.
+Cluster explicitly invokes accounting contract 1, owns scheduling, authority clocks,
+partition Finals and application, and loads this same plugin implementation.
+No Cluster dependency or scheduler is required for standalone use.
+
 ## Grid Backups
 
 If the server also runs [Grid Backups](https://github.com/CometWorks/grid-backups), Concealment
@@ -156,8 +190,8 @@ What it covers:
   blocks, thrust; a concealed ship that keeps drifting; a block woken while its grid is
   concealed (`test_activity.py`)
 - The three production modes: Off keeps active refineries revealed, Conceal pauses them,
-  Approximate banks the concealed time, catches up faster, caps the bank and saves the
-  banks with the world (`test_production.py`)
+  Approximate captures and settles paid resource-limited catch-up before reveal,
+  caps elapsed absence, and saves claims with native world stocks (`test_production.py`)
 - Excluded subtypes, pirate grids, the remote control keep-alive action, and grids joined
   by a rotor or a connector concealed and revealed as one (`test_exclusions.py`)
 - The `!conceal` commands, their permissions and bad input (`test_commands.py`)

@@ -39,7 +39,7 @@ public sealed class ConcealmentManager : IDisposable
         );
 
     private readonly ConcealmentRuntime plugin;
-    private readonly MySession session;
+    private MySession session;
     private MyMultiplayerBase multiplayer;
     private readonly IPluginLogger log;
     private readonly List<ConcealGroup> intersectGroups = new List<ConcealGroup>();
@@ -63,12 +63,18 @@ public sealed class ConcealmentManager : IDisposable
 
     public List<ConcealGroup> ConcealedGroups { get; } = new List<ConcealGroup>();
     public DynamicConcealmentManager Dynamic { get; }
-    public ProductionBoostManager Production { get; }
+    public LegacyBoostMigration Production { get; }
+    internal StandaloneAccounting Accounting { get; }
+    private readonly Dictionary<long, (ConcealGroup Group, double Distance)> pendingConceals = new();
+    private bool modeChanged;
 
     private PluginConfig Config => plugin.ConfigData;
 
     public ConcealmentManager(ConcealmentRuntime plugin, HarmonyLib.Harmony harmony)
     {
+        if (ConcealmentRuntime.ClusterMode)
+            throw new InvalidOperationException("Cluster owns grid lifecycle.");
+
         this.plugin = plugin;
         session = MySession.Static;
         log = plugin.Log;
@@ -98,8 +104,19 @@ public sealed class ConcealmentManager : IDisposable
                 )
             )
         );
+        harmony.Patch(AccessTools.Method(typeof(MyEntityComponentUpdater), nameof(MyEntityComponentUpdater.AddEntityComponents)),
+            prefix: new HarmonyMethod(AccessTools.Method(typeof(Shared.Concealment.ConcealGroup), nameof(Shared.Concealment.ConcealGroup.PrefixRegisterForUpdate))));
+        harmony.Patch(AccessTools.Method(typeof(MyGameLogic), nameof(MyGameLogic.RegisterForUpdate)),
+            prefix: new HarmonyMethod(AccessTools.Method(typeof(Shared.Concealment.ConcealGroup), nameof(Shared.Concealment.ConcealGroup.PrefixGameLogic))));
         Dynamic = new DynamicConcealmentManager(plugin, harmony);
-        Production = new ProductionBoostManager(plugin, harmony, plugin.DataDirectory);
+        // Install before native loading; saved concealed resource blocks must not
+        // execute their pending 100-frame update before the first host tick.
+        Dynamic.GuardConcealedUpdates(new[] { typeof(MyCubeGrid), typeof(MyBatteryBlock),
+            typeof(MyReactor), typeof(MyRefinery), typeof(MyAssembler), typeof(MyGasTank),
+            typeof(MyGasGenerator), typeof(MyJumpDrive), typeof(MyGasFueledPowerProducer),
+            typeof(SpaceEngineers.Game.Entities.Blocks.SafeZone.MySafeZoneBlock) });
+        Production = new LegacyBoostMigration(plugin, harmony);
+        Accounting = new StandaloneAccounting(plugin, harmony);
         Config.PropertyChanged += ConfigOnPropertyChanged;
     }
 
@@ -109,8 +126,13 @@ public sealed class ConcealmentManager : IDisposable
             return;
 
         InitializeSessionFeatures();
-        Dynamic.Update();
+        if (enabledLastTick && !Config.Enabled) RevealAll();
+        enabledLastTick = Config.Enabled;
         Production.Update(plugin.Tick);
+        Accounting.Update();
+        Dynamic.Update();
+        if (modeChanged) { modeChanged = false; RevealAll(); }
+        if (plugin.Tick % 100 == 0) AdvancePending();
 
         if (enabledLastTick && !Config.Enabled)
             RevealAll();
@@ -166,7 +188,7 @@ public sealed class ConcealmentManager : IDisposable
         var removeUpdatingComponents = GetRemoveUpdatingComponentsAction(MySession.Static);
 
         foreach (var group in groups)
-            concealed += ConcealGroup(group, removeUpdatingComponents);
+            concealed += ConcealGroup(group, removeUpdatingComponents, distanceFromPlayers);
 
         log.Debug("Concealed grids in {0}ms.", stopwatch.ElapsedMilliseconds);
 
@@ -252,6 +274,7 @@ public sealed class ConcealmentManager : IDisposable
 
     public bool IsExcluded(ConcealGroup group)
     {
+        if (Accounting.Blocks(group)) return true;
         var pirateId = MyPirateAntennas.GetPiratesId();
         var keepActiveProductionRevealed =
             Config.ProductionConcealment == ProductionConcealmentMode.Off;
@@ -341,13 +364,14 @@ public sealed class ConcealmentManager : IDisposable
         Config.PropertyChanged -= ConfigOnPropertyChanged;
         Dynamic.Dispose();
 
-        if (onSavingCheckpoint != null)
-            session.OnSavingCheckpoint -= onSavingCheckpoint;
+        if (session != null && onSavingCheckpoint != null)
+            typeof(MySession).GetEvent("OnSavingCheckpoint").RemoveEventHandler(session, onSavingCheckpoint);
 
+        Accounting.Dispose();
         Production.Dispose();
 
         if (multiplayer != null)
-            multiplayer.ClientJoined -= RevealCryoPod;
+            typeof(MyMultiplayerBase).GetEvent("ClientJoined").RemoveEventHandler(multiplayer, (Action<ulong, string>)RevealCryoPod);
 
         lock (keepAliveTimers)
         {
@@ -364,6 +388,7 @@ public sealed class ConcealmentManager : IDisposable
         if (initialized || MyAPIGateway.TerminalControls == null)
             return;
 
+        session = MySession.Static;
         readyTick = plugin.Tick + 60 * 30;
 
         // Every plugin has loaded by the time a session runs
@@ -383,12 +408,12 @@ public sealed class ConcealmentManager : IDisposable
 
         multiplayer = MyMultiplayer.Static;
         if (multiplayer != null)
-            multiplayer.ClientJoined += RevealCryoPod;
+            typeof(MyMultiplayerBase).GetEvent("ClientJoined").AddEventHandler(multiplayer, (Action<ulong, string>)RevealCryoPod);
 
         if (MySession.Static != null)
         {
-            onSavingCheckpoint = _ => Production.SaveNow();
-            MySession.Static.OnSavingCheckpoint += onSavingCheckpoint;
+            onSavingCheckpoint = _ => Accounting.SaveCache();
+            typeof(MySession).GetEvent("OnSavingCheckpoint").AddEventHandler(MySession.Static, onSavingCheckpoint);
         }
 
         initialized = true;
@@ -401,6 +426,8 @@ public sealed class ConcealmentManager : IDisposable
     )
     {
         configChanged = true;
+        if (e.PropertyName == nameof(PluginConfig.Enabled) && !Config.Enabled) pendingConceals.Clear();
+        if (e.PropertyName == nameof(PluginConfig.ProductionConcealment)) { modeChanged = true; pendingConceals.Clear(); Dynamic.Refresh(); }
 
         if (
             e.PropertyName == nameof(PluginConfig.DynamicConcealment)
@@ -412,17 +439,21 @@ public sealed class ConcealmentManager : IDisposable
         }
     }
 
-    private int ConcealGroup(ConcealGroup group, Action<MyEntity> removeUpdatingComponents)
+    private int ConcealGroup(ConcealGroup group, Action<MyEntity> removeUpdatingComponents, double distance)
     {
         if (ConcealedGroups.Any(g => g.Id == group.Id))
             return 0;
 
         log.Debug("Concealing grids: {0}", group.GridNames);
 
-        gridBackups?.BackUp(group);
-        CacheProductionCatchupGrids(group);
-        group.ConcealedAtTick = plugin.Tick;
-
+        if (!Accounting.TryBegin(group, () => gridBackups?.BackUp(group)))
+        {
+            pendingConceals[group.Id] = (group, distance);
+            return 0;
+        }
+        pendingConceals.Remove(group.Id);
+        Dynamic.GuardConcealedUpdates(group.Grids.Select(g => g.GetType())
+            .Concat(group.Grids.SelectMany(g => g.GetFatBlocks()).Select(b => b.GetType())));
         group.Conceal(removeUpdatingComponents);
         group.UpdateAabb();
         var aabb = group.WorldAabb;
@@ -430,6 +461,7 @@ public sealed class ConcealmentManager : IDisposable
         group.Closing += GroupOnClosing;
         group.UpdatePostConceal();
         ConcealedGroups.Add(group);
+        Accounting.Frozen(group);
 
         return group.Grids.Count;
     }
@@ -455,8 +487,8 @@ public sealed class ConcealmentManager : IDisposable
         var count = group.Grids.Count;
         log.Debug("Revealing grids: {0}", group.GridNames);
 
+        if (!Accounting.Settle(group)) return 0;
         group.Reveal(componentUpdater);
-        GrantProductionBoost(group);
         ConcealedGroups.Remove(group);
 
         if (group.ProxyId >= 0)
@@ -570,60 +602,31 @@ public sealed class ConcealmentManager : IDisposable
         return players.Select(p => new BoundingSphereD(p.GetPosition(), distance)).ToList();
     }
 
-    private void CacheProductionCatchupGrids(ConcealGroup group)
+    internal void RestoreConcealed(ConcealGroup group)
     {
-        group.ProductionCatchupGridIds.Clear();
-
-        if (Config.ProductionConcealment != ProductionConcealmentMode.Approximate)
-            return;
-
-        foreach (var grid in group.Grids)
-            if (grid.GetFatBlocks().OfType<MyProductionBlock>().Any(IsProductionActiveForCatchup))
-                group.ProductionCatchupGridIds.Add(grid.EntityId);
+        Dynamic.GuardConcealedUpdates(group.Grids.Select(g => g.GetType())
+            .Concat(group.Grids.SelectMany(g => g.GetFatBlocks()).Select(b => b.GetType())));
+        group.Conceal(GetRemoveUpdatingComponentsAction(MySession.Static));
+        group.UpdateAabb();
+        var aabb = group.WorldAabb;
+        group.ProxyId = concealedAabbTree.AddProxy(ref aabb, group, 0);
+        group.Closing += GroupOnClosing;
+        group.UpdatePostConceal();
+        ConcealedGroups.Add(group);
     }
 
-    private static bool IsProductionActiveForCatchup(MyProductionBlock block)
+    private void AdvancePending()
     {
-        if (block == null || !block.IsFunctional || !block.Enabled)
-            return false;
-
-        if (block.IsProducing)
-            return true;
-
-        return block is MyRefinery refinery && !refinery.InputInventory.Empty();
-    }
-
-    private void GrantProductionBoost(ConcealGroup group)
-    {
-        if (
-            Config.ProductionConcealment != ProductionConcealmentMode.Approximate
-            || group.ProductionCatchupGridIds.Count == 0
-        )
+        foreach (var pending in pendingConceals.Values.ToArray())
         {
-            return;
+            var group = pending.Group;
+            var physical = MyCubeGridGroups.Static.Physical.GetGroup(group.Grids[0]);
+            if (!Accounting.Enabled || physical == null || !physical.Nodes.Select(n => n.NodeData.EntityId).Order().SequenceEqual(group.Grids.Select(g => g.EntityId).Order())
+                || group.Grids.Any(g => g.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(g.EntityId), g)) || IsExcluded(group)
+                || pending.Distance != 0 && GetPlayerViewSpheres(pending.Distance).Any(s => s.Contains(GetGroupWorldAabb(physical)) != ContainmentType.Disjoint))
+            { pendingConceals.Remove(group.Id); Accounting.Cancel(group); continue; }
+            ConcealGroup(group, GetRemoveUpdatingComponentsAction(MySession.Static), pending.Distance);
         }
-
-        var concealedFrames = Math.Max(0, plugin.Tick - group.ConcealedAtTick);
-        if (concealedFrames == 0)
-            return;
-
-        var count = 0;
-        foreach (var grid in group.Grids)
-        {
-            if (!group.ProductionCatchupGridIds.Contains(grid.EntityId))
-                continue;
-
-            Production.GrantBoost(grid, concealedFrames);
-            count++;
-        }
-
-        if (count > 0)
-            log.Info(
-                "Banked {0} ticks of production catch-up for {1} grids in {2}.",
-                concealedFrames,
-                count,
-                group.GridNames
-            );
     }
 
     private static BoundingBoxD GetGroupWorldAabb(

@@ -29,8 +29,9 @@
         Admins set the conceal and reveal distances and scan intervals, the block
         subtypes that keep a grid group revealed, and whether pirate grids may be
         concealed. Active refineries and assemblers follow a production mode: Off keeps
-        them revealed, Conceal pauses them, and Approximate lets them catch up at boosted
-        speed after they are revealed. Dynamic rules skip selected block updates while
+        them revealed, Conceal pauses them, and Approximate settles resource-limited
+        production and power costs before reveal. Existing legacy boost banks drain
+        separately; new concealments create no bank. Dynamic rules skip selected block updates while
         no matching characters or grids are nearby. An optional remote control action
         keeps a grid revealed for one conceal interval.
 
@@ -42,6 +43,8 @@
     </Description>
 
   <!-- Only source code in the Directory entries listed in SourceDirectories is compiled. Exclude any test projects or similar. -->
+  <Runtimes>CoreCLR</Runtimes>
+
   <SourceDirectories>
     <Directory>ServerPlugin</Directory>
     <Directory>Shared</Directory>

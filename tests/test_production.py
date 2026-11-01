@@ -1,10 +1,10 @@
 """Active production and the three ProductionConcealment modes: Off keeps a
-grid with an active refinery revealed, Conceal pauses it, Approximate banks
-the time it spent concealed and lets it catch up faster once revealed."""
+grid with an active refinery revealed, Conceal pauses it, Approximate settles
+paid, stock-limited catch-up before reveal. Legacy banks are drain-only."""
 
 from __future__ import annotations
 
-import re
+import json
 import time
 
 import grids
@@ -18,14 +18,12 @@ ORE_KG = 2000
 
 @pytest.fixture
 def refinery(game):
-    """The refinery, refining, without a bank"""
-    game.a.probe("clearbanks")
+    """The refinery, refining, with no legacy credit"""
     game.a.probe("clear", grids.REFINERY_ID)
     assert game.a.probe("ore", grids.REFINERY_ID, ORE, ORE_KG).startswith("Probe ore:")
     wait_until(lambda: production(game)["producing"], 10, "the refinery producing")
     yield grids.REFINERY
     game.a.probe("clear", grids.REFINERY_ID)
-    game.a.probe("clearbanks")
 
 
 def production(game) -> dict:
@@ -110,76 +108,64 @@ def test_conceal_pauses_production(game, refinery):
     assert grids.REFINERY.entity_id not in banks(game)
 
 
-def test_approximate_catches_up(game, refinery):
-    """The time concealed divided by the boost level is banked, and the
-    refinery works at five times its speed until the bank is spent"""
-    game.configure(ProductionConcealment="Approximate", ProductionBoostLevel=5)
+def claims(game) -> list[dict]:
+    return json.loads(game.a.probe("accounting").removeprefix("Probe accounting: "))
+
+
+def claim(game, grid) -> dict:
+    return next(c for c in claims(game) if grid.entity_id in c["Members"])
+
+
+def test_approximate_catches_up_before_reveal(game, refinery):
+    game.configure(ProductionConcealment="Approximate")
     normal = rate(game, 10)
     assert normal > 0
-
-    before = production(game)["frame"]
     game.conceal()
-    concealed = production(game)["frame"]
-    # 20 s of boost, long enough to measure the boosted rate in it
-    time.sleep(100)
-    last_concealed = production(game)["frame"]
-    reply = game.a.command("!conceal reveal all")
-    bank = banks(game).get(refinery.entity_id)
+    game.wait_concealed(refinery, True, timeout=60)
+    frozen = production(game)
+    epoch = claim(game, refinery)["Epoch"]
+    time.sleep(12)
+    assert production(game)["input"] == frozen["input"]
+    game.a.command("!conceal reveal all")
     revealed = production(game)
-    assert bank is not None, reply
-    # The bank drains by the frames since the reveal, while it boosts
-    assert (
-        (last_concealed - concealed) / 5 - (revealed["frame"] - last_concealed)
-        <= bank
-        <= (revealed["frame"] - before) / 5
-    )
-
-    # The bank lasts from the first update that refines, so the rate is taken
-    # from there, while it lasts
-    start = refining_after(game, revealed)
-    time.sleep(5)
-    boosted = rate_between(start, production(game))
-    assert refinery.entity_id in banks(game), "the bank lasted the measurement"
-    assert boosted == pytest.approx(5 * normal, rel=0.1)
-
-    wait_until(lambda: refinery.entity_id not in banks(game), 30, "the bank spent")
+    assert frozen["input"] - revealed["input"] > normal * 8
+    applied = claim(game, refinery)
+    assert applied["Epoch"] == epoch and not applied["Concealed"]
+    assert applied["Profiles"] is None and applied["AppliedThrough"] > 0
+    assert refinery.entity_id not in banks(game)
+    game.a.command("!conceal reveal all")
+    assert claim(game, refinery)["AppliedThrough"] == applied["AppliedThrough"]
     assert rate(game, 10) == pytest.approx(normal, rel=0.1)
 
 
-def test_approximate_bank_is_capped(game, refinery):
-    # 0.0005 hours is 108 frames, 10 s concealed would bank 120
-    game.configure(ProductionConcealment="Approximate", MaxBoostHours=0.0005)
+def test_zero_elapsed_cap_still_closes_the_interval(game, refinery):
+    game.configure(ProductionConcealment="Approximate", OfflineCompensationMaxHours=0)
     game.conceal()
-    time.sleep(10)
-    # Without ore nothing spends the bank once revealed
-    game.a.probe("clear", grids.REFINERY_ID)
+    game.wait_concealed(refinery, True, timeout=60)
+    time.sleep(3)
     game.a.command("!conceal reveal all")
-    assert banks(game).get(refinery.entity_id) == pytest.approx(108, abs=1)
+    applied = claim(game, refinery)
+    assert not applied["Concealed"] and applied["AppliedThrough"] > 0
+    assert refinery.entity_id not in banks(game)
+    game.a.command("!conceal reveal all")
+    assert claim(game, refinery)["AppliedThrough"] == applied["AppliedThrough"]
 
 
 def test_approximate_idle_grid_gets_no_bank(game):
     game.configure(ProductionConcealment="Approximate")
-    game.a.probe("clearbanks")
     game.a.probe("clear", grids.REFINERY_ID)
     game.conceal()
-    time.sleep(3)
+    game.wait_concealed(grids.REFINERY, True, timeout=60)
     game.a.command("!conceal reveal all")
     assert grids.REFINERY.entity_id not in banks(game)
 
 
-def test_banks_are_saved_with_the_world(game, refinery):
+def test_claim_is_saved_with_native_world_stocks(game, refinery):
     game.configure(ProductionConcealment="Approximate")
     game.conceal()
-    time.sleep(10)
-    game.a.command("!conceal reveal all")
-    # No ore, no production: the bank stays as it is
-    game.a.probe("clear", grids.REFINERY_ID)
-    bank = banks(game)[refinery.entity_id]
+    game.wait_concealed(refinery, True, timeout=60)
+    current = claim(game, refinery)
+    assert current["Concealed"] and current["Profiles"] and current["StockHash"]
     assert game.a.probe("save") == "Probe save: True"
-    rows = game.server.banks.read_text().splitlines()
-    saved = {
-        int(m.group(1)): float(m.group(2))
-        for m in (re.search(r'"gridId":(-?\d+),"frames":([^}]+)', r) for r in rows)
-        if m
-    }
-    assert saved[refinery.entity_id] == pytest.approx(bank, abs=1)
+    sector = game._sector()
+    assert current["Epoch"] in sector and current["StockHash"] in sector

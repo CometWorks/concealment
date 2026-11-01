@@ -162,7 +162,7 @@ public class PluginConfig : IPluginConfig
 
 #if MAGNETAR
     [EnumOption(
-        "Active assembler/refinery handling. Off keeps active production grids revealed. Conceal hides them and production pauses. Approximate hides them, then banks boost time on reveal so they catch up at higher speed while online.",
+        "Active assembler/refinery handling. Off keeps active production grids revealed. Conceal hides them and production pauses. Approximate captures the whole eligible group and settles resource-limited production before reveal. Existing legacy banks drain first, separately.",
         Parent = "rules"
     )]
 #endif
@@ -173,10 +173,21 @@ public class PluginConfig : IPluginConfig
     } = ProductionConcealmentMode.Approximate;
 
 #if MAGNETAR
+    [IntOption(0, 168,
+        "Maximum elapsed offline simulation time per concealment, in hours. Excess absence is forfeited, never banked. This is independent of legacy online boost-bank hours.",
+        Parent = "rules")]
+#endif
+    public int OfflineCompensationMaxHours
+    {
+        get;
+        set => SetField(ref field, value);
+    } = 72;
+
+#if MAGNETAR
     [DoubleOption(
         1.0,
         1000.0,
-        "Approximate catch-up speed. Production runs this many times faster while boosting, drawing this many times more power. Concealed time divided by this level is how long the boost lasts online.",
+        "Compatibility migration only: speed and power multiplier while draining an existing legacy online boost bank. New concealments never create boost banks.",
         Parent = "rules"
     )]
 #endif
@@ -190,7 +201,7 @@ public class PluginConfig : IPluginConfig
     [DoubleOption(
         0.0,
         168.0,
-        "Maximum banked boost time in hours of online catch-up. Boost banked above this limit is lost, capping how much catch-up can accumulate while concealed.",
+        "Legacy online boost-bank cap, retained for configuration compatibility. Existing credit is not retroactively clamped. New accounting uses the separate elapsed offline-time cap.",
         Parent = "rules"
     )]
 #endif

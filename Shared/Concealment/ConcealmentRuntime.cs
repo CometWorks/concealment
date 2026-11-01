@@ -12,6 +12,9 @@ namespace Shared.Concealment;
 // One engine per authoritative world, regardless of which loader owns the plugin.
 public sealed class ConcealmentRuntime : IDisposable
 {
+    public static bool ClusterMode { get; } = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CLUSTER_GATEWAY_REGISTRY"));
+    internal static bool StandaloneActive => !ClusterMode && Instance is { disposed: false, Manager: not null } runtime
+        && (runtime.serverDataDirectory != null || Sync.IsServer);
     public static ConcealmentRuntime Instance { get; private set; }
     public PluginConfig ConfigData { get; }
     public IPluginLogger Log { get; }
@@ -35,12 +38,28 @@ public sealed class ConcealmentRuntime : IDisposable
         harmony = new Harmony(patchId);
         this.serverDataDirectory = serverDataDirectory;
         Instance = this;
-        MySession.OnUnloading += EndSession;
+        if (!ClusterMode)
+        {
+            MySession.BeforeLoading += BeginSession;
+            MySession.OnUnloading += EndSession;
+        }
+    }
+
+    // BeforeLoading runs before native grid Init. Install restore/update guards
+    // here, while keeping joining clients and the main menu passive.
+    private void BeginSession()
+    {
+        var current = MySession.Static;
+        if (disposed || ClusterMode || current == null || current.IsUnloading || !Sync.IsServer) return;
+        if (session != null && session != current) EndSession();
+        session = current;
+        DataDirectory = serverDataDirectory ?? current.CurrentPath;
+        Manager ??= new ConcealmentManager(this, harmony);
     }
 
     public void Update()
     {
-        if (disposed)
+        if (disposed || ClusterMode)
             return;
 
         var current = MySession.Static;
@@ -61,8 +80,7 @@ public sealed class ConcealmentRuntime : IDisposable
 
         try
         {
-            if (Manager == null)
-                Manager = new ConcealmentManager(this, harmony);
+            if (Manager == null) BeginSession();
             Manager.Update();
             Tick++;
         }
@@ -130,6 +148,7 @@ public sealed class ConcealmentRuntime : IDisposable
         if (disposed)
             return;
         disposed = true;
+        MySession.BeforeLoading -= BeginSession;
         MySession.OnUnloading -= EndSession;
         EndSession();
         Instance = null;

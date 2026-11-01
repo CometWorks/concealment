@@ -30,6 +30,8 @@ public sealed class ConcealGroup
 #if MAGNETAR
     private readonly List<(MyMechanicalConnectionBlockBase Block, Havok.HkConstraint Constraint)> heldConstraints = new();
     internal bool HoldsMechanicalPhysics => heldConstraints.Count > 0;
+    internal bool MechanicalPhysicsIntact => heldConstraints.All(held => ReferenceEquals(held.Block.Constraint, held.Constraint)
+        && !held.Constraint.IsDisposed && !held.Constraint.Enabled);
 
     internal void HoldMechanicalPhysics()
     {

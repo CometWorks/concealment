@@ -403,7 +403,7 @@ internal sealed class StandaloneAccounting : IDisposable
         bool mutated = false;
         try
         {
-            if (record.World != AccountingStock.World || group.Grids.Any(g => g.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(g.EntityId), g))
+            if (record.World != AccountingStock.World || !group.MechanicalPhysicsIntact || group.Grids.Any(g => g.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(g.EntityId), g))
                 || !record.Members.Order().SequenceEqual(group.Grids.Select(g => g.EntityId).Order())
                 || AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null) != record.Signature
                 || record.Poses != null && !(group.HoldsMechanicalPhysics

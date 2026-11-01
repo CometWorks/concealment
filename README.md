@@ -158,6 +158,10 @@ Complete saved mechanical groups reconnect only their reciprocal saved native
 base/top IDs on the owning game thread before topology validation. Rotor and piston
 structural attachment runs with production/update guards retained; missing or changed
 targets, foreign loaded membership and changed stocks still quarantine the claim.
+Reconstructed constraints stay disabled until paid reveal, keeping native solver
+jitter out of the held checkpoint. Pose validation accepts only the original pose
+or its exact native cluster-local float round trip; the original profile/pose
+evidence stays unchanged, with no added positional tolerance.
 Unpaid/rejected/opaque claims and legacy receipts keep their
 world-owned builder serializers and update guards through later ordinary saves.
 Disposing the plugin while that world is loaded has the same retention rule.
@@ -219,6 +223,7 @@ Targeted accounting checks (build the server plugin first):
 ```sh
 DEDICATED64=/path/to/DedicatedServer64 dotnet run --project tests/accounting-clock/ClockChecks.csproj -c Release
 python3 tests/accounting-recovery/run.py /absolute/path/to/new/probe-output
+python3 tests/accounting-mechanical/run.py /absolute/path/to/new/mechanical-output
 ```
 
 The clock/JSON-boundary check consumes the built production DLL and native DS references. The recovery check extracts

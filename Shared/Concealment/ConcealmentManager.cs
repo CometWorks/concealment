@@ -25,7 +25,7 @@ using VRage.Groups;
 using VRage.ModAPI;
 using VRageMath;
 
-namespace ServerPlugin;
+namespace Shared.Concealment;
 
 public sealed class ConcealmentManager : IDisposable
 {
@@ -38,7 +38,9 @@ public sealed class ConcealmentManager : IDisposable
             null
         );
 
-    private readonly Plugin plugin;
+    private readonly ConcealmentRuntime plugin;
+    private readonly MySession session;
+    private MyMultiplayerBase multiplayer;
     private readonly IPluginLogger log;
     private readonly List<ConcealGroup> intersectGroups = new List<ConcealGroup>();
     private readonly Dictionary<long, Timer> keepAliveTimers = new Dictionary<long, Timer>();
@@ -50,12 +52,14 @@ public sealed class ConcealmentManager : IDisposable
     private Action<MyEntity> onEntityClosingAction;
     private GridBackups gridBackups;
     private Action<MyObjectBuilder_Checkpoint> onSavingCheckpoint;
+    private Sandbox.ModAPI.Interfaces.Terminal.IMyTerminalAction keepAliveAction;
     private ulong counter;
     private bool initialized;
     private bool ready;
     private bool configChanged;
     private long readyTick;
     private bool disposed;
+    private bool enabledLastTick;
 
     public List<ConcealGroup> ConcealedGroups { get; } = new List<ConcealGroup>();
     public DynamicConcealmentManager Dynamic { get; }
@@ -63,10 +67,12 @@ public sealed class ConcealmentManager : IDisposable
 
     private PluginConfig Config => plugin.ConfigData;
 
-    public ConcealmentManager(Plugin plugin, HarmonyLib.Harmony harmony)
+    public ConcealmentManager(ConcealmentRuntime plugin, HarmonyLib.Harmony harmony)
     {
         this.plugin = plugin;
+        session = MySession.Static;
         log = plugin.Log;
+        enabledLastTick = Config.Enabled;
         harmony.Patch(
             AccessTools.Method(
                 typeof(MyEntities),
@@ -75,8 +81,8 @@ public sealed class ConcealmentManager : IDisposable
             ),
             prefix: new HarmonyMethod(
                 AccessTools.Method(
-                    typeof(ServerPlugin.ConcealGroup),
-                    nameof(ServerPlugin.ConcealGroup.PrefixRegisterForUpdate)
+                    typeof(Shared.Concealment.ConcealGroup),
+                    nameof(Shared.Concealment.ConcealGroup.PrefixRegisterForUpdate)
                 )
             )
         );
@@ -93,7 +99,7 @@ public sealed class ConcealmentManager : IDisposable
             )
         );
         Dynamic = new DynamicConcealmentManager(plugin, harmony);
-        Production = new ProductionBoostManager(plugin, harmony);
+        Production = new ProductionBoostManager(plugin, harmony, plugin.DataDirectory);
         Config.PropertyChanged += ConfigOnPropertyChanged;
     }
 
@@ -105,6 +111,10 @@ public sealed class ConcealmentManager : IDisposable
         InitializeSessionFeatures();
         Dynamic.Update();
         Production.Update(plugin.Tick);
+
+        if (enabledLastTick && !Config.Enabled)
+            RevealAll();
+        enabledLastTick = Config.Enabled;
 
         if (initialized && !ready && plugin.Tick >= readyTick)
             ready = true;
@@ -123,6 +133,8 @@ public sealed class ConcealmentManager : IDisposable
 
     public int ConcealGrids(double distanceFromPlayers = 0)
     {
+        // An explicit scan is allowed while periodic concealment is disabled.
+        enabledLastTick = Config.Enabled;
         log.Debug("Concealing grids");
 
         var concealed = 0;
@@ -214,7 +226,7 @@ public sealed class ConcealmentManager : IDisposable
         MyObjectBuilder_CubeBlock __result
     )
     {
-        var manager = Plugin.Instance?.Manager;
+        var manager = ConcealmentRuntime.Instance?.Manager;
         if (
             manager != null
             && __result is MyObjectBuilder_FunctionalBlock builder
@@ -329,18 +341,22 @@ public sealed class ConcealmentManager : IDisposable
         Config.PropertyChanged -= ConfigOnPropertyChanged;
         Dynamic.Dispose();
 
-        if (MySession.Static != null && onSavingCheckpoint != null)
-            MySession.Static.OnSavingCheckpoint -= onSavingCheckpoint;
+        if (onSavingCheckpoint != null)
+            session.OnSavingCheckpoint -= onSavingCheckpoint;
 
         Production.Dispose();
 
-        if (MyMultiplayer.Static != null)
-            MyMultiplayer.Static.ClientJoined -= RevealCryoPod;
+        if (multiplayer != null)
+            multiplayer.ClientJoined -= RevealCryoPod;
 
-        foreach (var timer in keepAliveTimers.Values)
-            timer.Dispose();
-
-        keepAliveTimers.Clear();
+        lock (keepAliveTimers)
+        {
+            foreach (var timer in keepAliveTimers.Values)
+                timer.Dispose();
+            keepAliveTimers.Clear();
+        }
+        if (keepAliveAction != null && MyAPIGateway.TerminalControls != null)
+            MyAPIGateway.TerminalControls.RemoveAction<IMyRemoteControl>(keepAliveAction);
     }
 
     private void InitializeSessionFeatures()
@@ -357,7 +373,7 @@ public sealed class ConcealmentManager : IDisposable
 
         if (Config.RemoteControlKeepAliveAction)
         {
-            var keepAliveAction = MyAPIGateway.TerminalControls.CreateAction<IMyRemoteControl>(
+            keepAliveAction = MyAPIGateway.TerminalControls.CreateAction<IMyRemoteControl>(
                 "Concealment.KeepAlive"
             );
             keepAliveAction.Name = new StringBuilder("Concealment keep alive");
@@ -365,8 +381,9 @@ public sealed class ConcealmentManager : IDisposable
             MyAPIGateway.TerminalControls.AddAction<IMyRemoteControl>(keepAliveAction);
         }
 
-        if (MyMultiplayer.Static != null)
-            MyMultiplayer.Static.ClientJoined += RevealCryoPod;
+        multiplayer = MyMultiplayer.Static;
+        if (multiplayer != null)
+            multiplayer.ClientJoined += RevealCryoPod;
 
         if (MySession.Static != null)
         {

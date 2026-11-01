@@ -7,7 +7,7 @@ using Sandbox.Game.Entities;
 using Shared.Logging;
 using VRage.Game;
 
-namespace ServerPlugin;
+namespace Shared.Concealment;
 
 // Asks the Grid Backups plugin, when the server runs it, for a backup of each grid
 // group before it is concealed. Concealment has no reference to Grid Backups, so

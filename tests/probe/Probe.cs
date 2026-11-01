@@ -50,7 +50,7 @@ public sealed class ProbeCommands : CommandModule
     private static Assembly Concealment =>
         AppDomain
             .CurrentDomain.GetAssemblies()
-            .First(a => a.GetType("ServerPlugin.ConcealmentManager") != null);
+            .First(a => a.GetType("Shared.Concealment.ConcealmentManager") != null);
 
     private static object Plugin =>
         Concealment.GetType("ServerPlugin.Plugin").GetProperty("Instance").GetValue(null);
@@ -211,7 +211,7 @@ public sealed class ProbeCommands : CommandModule
     private static IDictionary BoostBanks =>
         (IDictionary)
             Concealment
-                .GetType("ServerPlugin.ProductionBoostManager")
+                .GetType("Shared.Concealment.ProductionBoostManager")
                 .GetField("BoostBankFrames", Any)
                 .GetValue(null);
 

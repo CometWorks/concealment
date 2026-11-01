@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
-using HarmonyLib;
 using PluginSdk.Commands;
 using Shared.Config;
+using Shared.Concealment;
 using Shared.Logging;
 using Shared.Plugin;
 using VRage.FileSystem;
@@ -14,10 +14,8 @@ using ConcealmentConfig = Shared.Config.PluginConfig;
 using ConfigStorage = PluginSdk.Config.ConfigStorage;
 // Define assembly version when compiled by Magnetar
 #if !LOCAL_BUILD
-using System.Reflection;
-
-[assembly: AssemblyVersion("1.1.1.0")]
-[assembly: AssemblyFileVersion("1.1.1.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 CometWorks")]
 
 #endif
@@ -30,17 +28,16 @@ public class Plugin : IPlugin, ICommonPlugin
     public const string Name = "Concealment";
     public static Plugin Instance { get; private set; }
 
-    public long Tick { get; private set; }
-    private static bool failed;
+    public long Tick => runtime?.Tick ?? 0;
+    private ConcealmentRuntime runtime;
 
     public IPluginLogger Log => Logger;
     private static readonly IPluginLogger Logger = new PluginLogger(Name);
 
     public IPluginConfig Config => ConfigData;
     public ConcealmentConfig ConfigData { get; private set; }
-    public ConcealmentManager Manager { get; private set; }
+    public ConcealmentManager Manager => runtime?.Manager;
 
-    private Harmony harmony;
     private string configPath;
     private static readonly string ConfigFileName = $"{Name}.cfg";
 
@@ -55,7 +52,6 @@ public class Plugin : IPlugin, ICommonPlugin
 #endif
 
         Instance = this;
-        failed = false;
 
         Log.Info("Loading");
 
@@ -66,8 +62,7 @@ public class Plugin : IPlugin, ICommonPlugin
         var gameVersion = MyFinalBuildConstants.APP_VERSION_STRING.ToString();
         Common.SetPlugin(this, gameVersion, MyFileSystem.UserDataPath);
 
-        harmony = new Harmony(Name);
-        Manager = new ConcealmentManager(this, harmony);
+        runtime = new ConcealmentRuntime(ConfigData, Log, Name + ".Server", MyFileSystem.UserDataPath);
         RegisterCommands();
 
         Log.Debug("Successfully loaded");
@@ -77,8 +72,7 @@ public class Plugin : IPlugin, ICommonPlugin
     {
         try
         {
-            Manager?.RevealAll();
-            Manager?.Dispose();
+            runtime?.Dispose();
             SaveConfig();
 
             if (ConfigData != null)
@@ -91,37 +85,12 @@ public class Plugin : IPlugin, ICommonPlugin
             Log.Critical(ex, "Dispose failed");
         }
 
-        Manager = null;
+        runtime = null;
         ConfigData = null;
         Instance = null;
     }
 
-    public void Update()
-    {
-        if (failed)
-            return;
-
-#if DEBUG
-        CustomUpdate();
-        Tick++;
-#else
-        try
-        {
-            CustomUpdate();
-            Tick++;
-        }
-        catch (Exception e)
-        {
-            Log.Critical(e, "Update failed");
-            failed = true;
-        }
-#endif
-    }
-
-    private void CustomUpdate()
-    {
-        Manager?.Update();
-    }
+    public void Update() => runtime?.Update();
 
     private ConcealmentConfig LoadConfig(string path)
     {

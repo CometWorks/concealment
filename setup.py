@@ -23,11 +23,13 @@ PT_PROJECT_NAME = r"^([A-Z][a-z_0-9]+)+$"
 RX_PROJECT_NAME = re.compile(PT_PROJECT_NAME)
 
 PROJECT_NAMES = (
+    "ClientPlugin",
     "ServerPlugin",
     "Shared",
 )
 
-# Steam app id providing the server build references
+# Steam app ids of the games providing the build references
+GAME_APP_ID = "244850"  # Space Engineers (Bin64)
 DEDICATED_APP_ID = "298740"  # Space Engineers Dedicated Server (DedicatedServer64)
 
 # Local folder path overrides imported by Directory.Build.props, not committed
@@ -36,8 +38,15 @@ USER_PROPS = "Directory.Build.props.user"
 USER_PROPS_TEMPLATE = """\
 <Project>
   <PropertyGroup>
+    <!-- Folder containing SpaceEngineers.exe (empty = auto-detect from Steam) -->
+    <Bin64>{bin64}</Bin64>
+
     <!-- Folder containing SpaceEngineersDedicated.exe (empty = auto-detect from Steam) -->
     <Dedicated64>{dedicated64}</Dedicated64>
+
+    <!-- Pulsar folder to deploy the client plugin into after each build (empty = no deployment),
+         for example $(APPDATA)\\Pulsar on Windows or $(HOME)/.config/Pulsar on Linux -->
+    <Pulsar></Pulsar>
 
     <!-- Magnetar installation folder, holds the launchers (empty = auto-detect) -->
     <Magnetar></Magnetar>
@@ -111,13 +120,15 @@ def _rename_project(name: str) -> None:
         "A061FC6C-713E-42CD-B413-151AC8A5074C": _generate_guid().upper(),
         "FFB7FCA3-B168-43F4-8DBF-6247C0D331C8": _generate_guid().upper(),
         "C5784FE0-CF0A-4870-9DEF-7BEA8B64C01A": _generate_guid().upper(),
+        "188BD0B5-C10A-4672-9A68-B17267C81B9D": _generate_guid().upper(),
     }
 
     def iter_paths() -> Iterator[Tuple[str, str]]:
         print("Solution:")
         for filename in (
             f"{TEMPLATE_NAME}.sln",
-            f"{TEMPLATE_NAME}.xml",
+            f"{TEMPLATE_NAME}Client.xml",
+            f"{TEMPLATE_NAME}Server.xml",
         ):
             if os.path.exists(filename):
                 yield filename, filename
@@ -287,16 +298,22 @@ def _set_prop(group: ET.Element, name: str, value: str) -> None:
     element.text = value
 
 
-def _update_props(server_dir: str | None = None) -> None:
-    """Write the detected path into the git-ignored local overrides file."""
-    if not server_dir:
+def _update_props(
+    game_dir: str | None = None,
+    server_dir: str | None = None,
+) -> None:
+    """Write the detected paths into the git-ignored local overrides file."""
+    if not game_dir and not server_dir:
         return
 
-    dedicated64_dir = str(Path(server_dir) / "DedicatedServer64")
+    bin64_dir = str(Path(game_dir) / "Bin64") if game_dir else ""
+    dedicated64_dir = str(Path(server_dir) / "DedicatedServer64") if server_dir else ""
 
     if not os.path.isfile(USER_PROPS):
         with open(USER_PROPS, "w", encoding="UTF-8", newline="\n") as file:
-            file.write(USER_PROPS_TEMPLATE.format(dedicated64=dedicated64_dir))
+            file.write(
+                USER_PROPS_TEMPLATE.format(bin64=bin64_dir, dedicated64=dedicated64_dir)
+            )
         print(f"Created {USER_PROPS}")
         return
 
@@ -309,7 +326,11 @@ def _update_props(server_dir: str | None = None) -> None:
     if group is None:
         group = ET.SubElement(root, "PropertyGroup")
 
-    _set_prop(group, "Dedicated64", dedicated64_dir)
+    if bin64_dir:
+        _set_prop(group, "Bin64", bin64_dir)
+
+    if dedicated64_dir:
+        _set_prop(group, "Dedicated64", dedicated64_dir)
 
     tree.write(USER_PROPS)
     print(f"Updated {USER_PROPS}")
@@ -334,14 +355,19 @@ def main() -> None:
             return
 
         vdf_path = str(Path(steam_path) / "steamapps" / "libraryfolders.vdf")
-        locations = _get_install_locations(vdf_path, [DEDICATED_APP_ID])
+        locations = _get_install_locations(vdf_path, [GAME_APP_ID, DEDICATED_APP_ID])
+
+        if locations[GAME_APP_ID] is not None:
+            print(f"Found Space Engineers under {locations[GAME_APP_ID]}")
+        else:
+            print("Could not find Space Engineers install location.")
 
         if locations[DEDICATED_APP_ID] is not None:
             print(f"Found Dedicated Server under {locations[DEDICATED_APP_ID]}")
         else:
             print("Could not find Dedicated Server install location.")
 
-        _update_props(locations[DEDICATED_APP_ID])
+        _update_props(locations[GAME_APP_ID], locations[DEDICATED_APP_ID])
     else:
         print(f"Please add the paths manually to '{USER_PROPS}'")
 

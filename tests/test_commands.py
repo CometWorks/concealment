@@ -101,6 +101,14 @@ def test_run_while_disabled(game):
     assert game.is_concealed(grids.PLAIN_SHIP)
 
 
+def test_disabling_in_config_reveals_hidden_grids(game):
+    game.conceal()
+    assert game.is_concealed(grids.PLAIN_SHIP)
+    game.configure(Enabled=False)
+    game.wait_concealed(grids.PLAIN_SHIP, False)
+    assert game.concealed_ids() == set()
+
+
 def test_reveal_all(game):
     game.conceal()
     reply = game.a.command("!conceal reveal all")

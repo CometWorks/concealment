@@ -13,7 +13,7 @@ using VRage.Groups;
 using VRage.ModAPI;
 using VRageMath;
 
-namespace ServerPlugin;
+namespace Shared.Concealment;
 
 public sealed class ConcealGroup
 {

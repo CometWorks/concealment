@@ -16,7 +16,7 @@ using Shared.Logging;
 using VRage.FileSystem;
 using VRage.Game.Entity;
 
-namespace ServerPlugin;
+namespace Shared.Concealment;
 
 // Approximate production catch-up, tracked per grid. While a grid is concealed its
 // assemblers and refineries do not run, so on reveal we hand the grid a bank of
@@ -40,10 +40,10 @@ public sealed class ProductionBoostManager : IDisposable
 
     private const string BanksFileName = "ConcealmentBanks.jsonl";
 
-    private static readonly WeakReference<Plugin> PluginRef = new WeakReference<Plugin>(null);
+    private static readonly WeakReference<ConcealmentRuntime> PluginRef = new WeakReference<ConcealmentRuntime>(null);
 
     // Banked online boost time per grid, keyed by grid EntityId, measured in
-    // simulation frames (60 per second, same clock as Plugin.Tick).
+    // simulation frames (60 per second, same clock as ConcealmentRuntime.Tick).
     private static readonly ConcurrentDictionary<long, double> BoostBankFrames =
         new ConcurrentDictionary<long, double>();
 
@@ -87,12 +87,12 @@ public sealed class ProductionBoostManager : IDisposable
     private long lastSaveTick;
     private bool disposed;
 
-    public ProductionBoostManager(Plugin plugin, Harmony harmony)
+    public ProductionBoostManager(ConcealmentRuntime plugin, Harmony harmony, string dataDirectory)
     {
         this.harmony = harmony;
         log = plugin.Log;
         PluginRef.SetTarget(plugin);
-        banksPath = Path.Combine(MyFileSystem.UserDataPath, BanksFileName);
+        banksPath = Path.Combine(dataDirectory, BanksFileName);
 
         Load();
 

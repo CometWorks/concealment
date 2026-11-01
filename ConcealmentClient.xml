@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<PluginData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="GitHubPlugin">
+  <Id>CometWorks/concealment</Id>
+  <RepoId>CometWorks/concealment</RepoId>
+  <FriendlyName>Concealment</FriendlyName>
+  <Author>CometWorks</Author>
+  <Tooltip>Conceals distant grids in offline and player-hosted worlds</Tooltip>
+  <Description>Reduces simulation load by pausing distant grid groups in worlds you host. Supports offline games and friends multiplayer. In a game hosted by Magnetar, the server plugin controls concealment; this client plugin leaves the server in charge. Configure local and hosted worlds through the Pulsar settings dialog.</Description>
+  <SourceDirectories>
+    <Directory>ClientPlugin</Directory>
+    <Directory>Shared</Directory>
+  </SourceDirectories>
+  <NuGetReferences>
+    <PackageReference Include="Lib.Harmony" Version="2.4.2" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+  </NuGetReferences>
+  <Commit>TODO Git commit hash</Commit>
+</PluginData>

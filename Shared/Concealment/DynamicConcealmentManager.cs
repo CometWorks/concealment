@@ -18,7 +18,7 @@ using VRage.Game.ModAPI;
 using VRage.ObjectBuilders;
 using VRageMath;
 
-namespace ServerPlugin;
+namespace Shared.Concealment;
 
 public sealed class DynamicConcealmentManager : IDisposable
 {
@@ -56,11 +56,11 @@ public sealed class DynamicConcealmentManager : IDisposable
     private static readonly ConditionalWeakTable<MyCubeGrid, GridInfo> GridUpdateInfo =
         new ConditionalWeakTable<MyCubeGrid, GridInfo>();
 
-    private static readonly WeakReference<Plugin> PluginRef = new WeakReference<Plugin>(null);
+    private static readonly WeakReference<ConcealmentRuntime> PluginRef = new WeakReference<ConcealmentRuntime>(null);
 
     private static int configVersion;
 
-    private readonly Plugin plugin;
+    private readonly ConcealmentRuntime plugin;
     private readonly Harmony harmony;
     private readonly IPluginLogger log;
     private readonly HashSet<MethodBase> patchedMethods = new HashSet<MethodBase>();
@@ -89,7 +89,7 @@ public sealed class DynamicConcealmentManager : IDisposable
         }
     }
 
-    public DynamicConcealmentManager(Plugin plugin, Harmony harmony)
+    public DynamicConcealmentManager(ConcealmentRuntime plugin, Harmony harmony)
     {
         this.plugin = plugin;
         this.harmony = harmony;

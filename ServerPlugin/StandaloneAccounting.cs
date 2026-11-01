@@ -5,9 +5,13 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Concealment.Accounting;
 using HarmonyLib;
+using Sandbox;
+using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game.Entities;
+using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
 using Shared.Config;
@@ -173,9 +177,13 @@ internal sealed class StandaloneAccounting : IDisposable
                     || !root.Record.Members.Order().SequenceEqual(group.Select(g => g.Grid.EntityId).Order())
                     || group.Any(g => g.Record.Rejected != null || g.Record.Epoch != root.Record.Epoch || g.Record.World != root.Record.World || !g.Record.Members.SequenceEqual(root.Record.Members)))
                     throw new InvalidDataException("Incomplete/mismatched standalone checkpoint");
+                RestoreMechanicalLinks(group.ToArray());
                 var physical = MyCubeGridGroups.Static.Physical.GetGroup(root.Grid) ?? throw new InvalidDataException("Missing physical group");
                 var concealed = new ConcealGroup(physical);
                 if (!concealed.Grids.Select(g => g.EntityId).Order().SequenceEqual(root.Record.Members.Order())) throw new InvalidDataException("Saved accounting topology changed");
+                var logical = Groups(concealed);
+                if (logical.Length != root.Record.Profiles.Length || logical.Any(g => !root.Record.Profiles.Any(p => p.Members.Order().SequenceEqual(g.Select(m => m.EntityId).Order()))))
+                    throw new InvalidDataException("Saved logical accounting topology changed");
                 AccountingStock.RestoreLoadedEngines(concealed.Grids, group.Select(g => g.Builder).ToArray(), root.Record.StockHash);
                 foreach (var member in concealed.Grids) records[member.EntityId] = root.Record;
                 concealed.RestoreProjectors(root.Record.Projectors);
@@ -188,6 +196,83 @@ internal sealed class StandaloneAccounting : IDisposable
             }
         }
         restored.Clear();
+    }
+    private void RestoreMechanicalLinks((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group)
+    {
+        var session = MySession.Static;
+        var grids = group.ToDictionary(g => g.Grid.EntityId, g => g.Grid);
+        void ValidateOwner()
+        {
+            if (!ReferenceEquals(Current, this) || session == null || session != MySession.Static || session.IsUnloading
+                || MySandboxGame.Static == null || Thread.CurrentThread != MySandboxGame.Static.UpdateThread
+                || group.Any(g => g.Grid.MarkedForClose || g.Grid.IsPreview || !ReferenceEquals(MyEntities.GetEntityById(g.Grid.EntityId), g.Grid)
+                    || g.Builder.EntityId != g.Grid.EntityId || g.Record.World != AccountingStock.World
+                    || !records.TryGetValue(g.Grid.EntityId, out var record) || !ReferenceEquals(record, g.Record) || opaque.ContainsKey(g.Grid.EntityId)))
+                throw new InvalidDataException("Mechanical recovery no longer owns the loaded checkpoint");
+            foreach (var grid in grids.Values)
+            {
+                var physical = MyCubeGridGroups.Static.Physical.GetGroup(grid);
+                var logical = MyCubeGridGroups.Static.Logical.GetGroup(grid);
+                if (physical != null && physical.Nodes.Any(n => !grids.TryGetValue(n.NodeData.EntityId, out var member) || !ReferenceEquals(member, n.NodeData))
+                    || logical != null && logical.Nodes.Any(n => !grids.TryGetValue(n.NodeData.EntityId, out var member) || !ReferenceEquals(member, n.NodeData)))
+                    throw new InvalidDataException("Loaded accounting closure crosses saved membership");
+            }
+        }
+        ValidateOwner();
+        foreach (var grid in grids.Values) ConcealGroup.SuppressUpdates(grid, null);
+        plugin.Manager.Dynamic.GuardConcealedUpdates(grids.Values.Select(g => g.GetType()).Concat(grids.Values.SelectMany(g => g.GetFatBlocks()).Select(b => b.GetType())));
+        var saved = group.SelectMany(g => g.Builder.CubeBlocks.Select(b => (Grid: g.Grid, Block: b))).Where(b => b.Block.EntityId != 0).ToDictionary(b => b.Block.EntityId);
+        var blocks = grids.Values.SelectMany(g => g.GetFatBlocks()).ToDictionary(b => b.EntityId);
+        var links = new List<(MyMechanicalConnectionBlockBase Base, MyAttachableTopBlockBase Top)>();
+        foreach (var entry in saved.Values)
+        {
+            if (entry.Block is MyObjectBuilder_MechanicalConnectionBlock mechanical)
+            {
+                if (!blocks.TryGetValue(mechanical.EntityId, out var block) || block is not MyMechanicalConnectionBlockBase connection
+                    || connection.CubeGrid != entry.Grid || connection.MarkedForClose
+                    || ((MyObjectBuilder_MechanicalConnectionBlock)connection.GetObjectBuilderCubeBlock()).TopBlockId != mechanical.TopBlockId)
+                    throw new InvalidDataException("Saved mechanical base identity/target changed");
+                if (mechanical.TopBlockId is not > 0)
+                {
+                    if (connection.TopBlock != null) throw new InvalidDataException("Unexpected loaded mechanical attachment");
+                    continue;
+                }
+                if (!saved.TryGetValue(mechanical.TopBlockId.Value, out var target) || target.Block is not MyObjectBuilder_AttachableTopBlockBase topBuilder
+                    || topBuilder.ParentEntityId != mechanical.EntityId || !blocks.TryGetValue(topBuilder.EntityId, out var topBlock)
+                    || topBlock is not MyAttachableTopBlockBase top || top.CubeGrid != target.Grid || top.MarkedForClose
+                    || connection.TopBlock != null && connection.TopBlock != top || top.Stator != null && top.Stator != connection)
+                    throw new InvalidDataException("Saved mechanical top/parent identity changed");
+                links.Add((connection, top));
+            }
+            if (entry.Block is MyObjectBuilder_AttachableTopBlockBase attached && attached.ParentEntityId != 0
+                && (!saved.TryGetValue(attached.ParentEntityId, out var parent) || parent.Block is not MyObjectBuilder_MechanicalConnectionBlock basis || basis.TopBlockId != attached.EntityId))
+                throw new InvalidDataException("Saved mechanical link is not reciprocal");
+        }
+        // Native BEFORE_NEXT_FRAME also runs unrelated block work. Only complete
+        // its saved-ID structural branch; production guards never open.
+        AccountingStock.RestoreLoadedEngines(grids.Values, group.Select(g => g.Builder).ToArray(), group.Single(g => g.Grid.EntityId == g.Record.Root).Record.StockHash);
+        string stocks = AccountingStock.Fingerprint(AccountingStock.Builders(grids.Values).Values.Cast<MyObjectBuilder_CubeGrid>());
+        foreach (var link in links)
+        {
+            ValidateOwner();
+            ValidateLink(link.Base, link.Top);
+            if (link.Base.TopBlock == null) link.Base.UpdateAttachState();
+            ValidateOwner();
+            ValidateLink(link.Base, link.Top);
+            if (link.Base.TopBlock != link.Top || link.Top.Stator != link.Base || !link.Base.IsAttached)
+                throw new InvalidDataException("Native saved mechanical attachment did not complete");
+        }
+        if (AccountingStock.Fingerprint(AccountingStock.Builders(grids.Values).Values.Cast<MyObjectBuilder_CubeGrid>()) != stocks)
+            throw new InvalidDataException("Native structural recovery changed accounting stocks");
+
+        void ValidateLink(MyMechanicalConnectionBlockBase connection, MyAttachableTopBlockBase top)
+        {
+            if (connection.MarkedForClose || top.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(connection.EntityId), connection)
+                || !ReferenceEquals(MyEntities.GetEntityById(top.EntityId), top) || connection.CubeGrid != saved[connection.EntityId].Grid
+                || top.CubeGrid != saved[top.EntityId].Grid || ((MyObjectBuilder_MechanicalConnectionBlock)connection.GetObjectBuilderCubeBlock()).TopBlockId != top.EntityId
+                || connection.TopBlock != null && connection.TopBlock != top || top.Stator != null && top.Stator != connection)
+                throw new InvalidDataException("Loaded mechanical link identity changed during recovery");
+        }
     }
     private void RejectRecovery((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group, string reason)
     {

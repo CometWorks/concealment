@@ -8,7 +8,7 @@ class Log { public int Errors; public void Error(Exception e,string s,long n){Er
 class MySession { public static MySession Static=new(); public bool Ready=true; public TimeSpan ElapsedGameTime=TimeSpan.FromTicks(16000000); }
 class MyObjectBuilder_EntityBase {}
 class MyObjectBuilder_CubeGrid : MyObjectBuilder_EntityBase { public string Raw; public MyObjectBuilder_CubeGrid Clone()=>new(){Raw=Raw}; }
-class OfflineProfile { public string Tag; public static JsonSerializerOptions Json=new(){IncludeFields=true}; }
+class OfflineProfile { public string Tag; public long[] Members=[]; public static JsonSerializerOptions Json=new(){IncludeFields=true}; }
 class MyCubeGrid { public long EntityId; public bool MarkedForClose,IsPreview,Suppressed; public Storage Storage=new(); public object[] GetFatBlocks()=>[]; }
 class Storage { public string Raw; public void RemoveValue(Guid key){ Raw=null; } }
 class MyEntities { public static Dictionary<long,MyCubeGrid> Grids=new(); public static MyCubeGrid GetEntityById(long id)=>Grids.GetValueOrDefault(id); }
@@ -28,3 +28,7 @@ class MySafeZoneComponent { public void SafeZoneRemove_Server(){} }
 
 class Harmony { public int Unpatches; public void Unpatch(int target, int patch) { Unpatches++; } }
 class ConcealmentRuntime { public static ConcealmentRuntime Instance=new(); public Manager Manager; public static bool StandaloneOwner=>Instance.Manager!=null; }
+
+// Native saved-link reconstruction is exercised by NativeProbe. This probe
+// supplies already established groups and tests the recovery/retention owner.
+partial class Subject { private void RestoreMechanicalLinks((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group) {} }

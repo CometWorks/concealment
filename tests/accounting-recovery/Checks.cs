@@ -13,7 +13,7 @@ partial class Subject {
  static MyCubeGrid[] Grids(params long[] ids){var gs=ids.Select(id=>new MyCubeGrid{EntityId=id}).ToArray();foreach(var g in gs)MyEntities.Grids[g.EntityId]=g;MyCubeGridGroups.Static.Physical.Add(gs);MyCubeGridGroups.Static.Logical.Add(gs);return gs;}
  static ConcealGroup Group(MyCubeGrid[] grids)=>new(MyCubeGridGroups.Static.Physical.GetGroup(grids[0]));
  static string Raw(Record record)=>JsonSerializer.Serialize(record,OfflineProfile.Json);
- Record Row(long root,long[] members,string epoch,bool profile=false)=>new(){World="world",Epoch=epoch,Root=root,Members=members,Concealed=true,CheckpointTicks=MySession.Static.ElapsedGameTime.Ticks,Profiles=profile?[new(){Tag="original-unpaid-profile"}]:null};
+ Record Row(long root,long[] members,string epoch,bool profile=false)=>new(){World="world",Epoch=epoch,Root=root,Members=members,Concealed=true,CheckpointTicks=MySession.Static.ElapsedGameTime.Ticks,Profiles=profile?[new(){Tag="original-unpaid-profile",Members=members}]:null};
  void Load(MyCubeGrid g,Record row)=>Restore(g,new(){Raw=Raw(row)});
  public void Run(){
   foreach(string scenario in new[]{"missing-root","missing-member","mismatched-members","mismatched-epoch","topology-extra"}){

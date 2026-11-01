@@ -154,6 +154,10 @@ subsequent scans and world saves/reloads; unaffected groups proceed independentl
 An update failure stops scheduling, profiling and commands. Already recovered complete
 groups settle before stopping. Pending restoration still establishes group recovery
 or quarantine if the first update fails, without starting observation or profiling.
+Complete saved mechanical groups reconnect only their reciprocal saved native
+base/top IDs on the owning game thread before topology validation. Rotor and piston
+structural attachment runs with production/update guards retained; missing or changed
+targets, foreign loaded membership and changed stocks still quarantine the claim.
 Unpaid/rejected/opaque claims and legacy receipts keep their
 world-owned builder serializers and update guards through later ordinary saves.
 Disposing the plugin while that world is loaded has the same retention rule.

@@ -40,6 +40,7 @@ public sealed partial class Probe : IPlugin
     public void Init(object gameInstance)
     {
         root = Environment.GetEnvironmentVariable("EXTRACTION_PROBE_ROOT"); Directory.CreateDirectory(root);
+        InitializeMechanicalTrace();
         string reference = Environment.GetEnvironmentVariable("EXTRACTION_CLUSTER_REFERENCE");
         if (!string.IsNullOrEmpty(reference))
         {
@@ -86,6 +87,7 @@ public sealed partial class Probe : IPlugin
                 return Inspect();
             case "fixtures": return Fixtures();
             case "recovery-fixtures": return RecoveryFixtures();
+            case "piston-fixtures": return PistonFixtures();
             case "manager-failure": return ArmManagerFailure();
             case "admission": return RecoveryAdmission(r.GetProperty("name").GetString());
             case "world-unload":
@@ -161,6 +163,7 @@ public sealed partial class Probe : IPlugin
             censusCount = censuses?.Count, claims = records?.Values.Cast<object>().Distinct().Select(v => JsonSerializer.SerializeToElement(v, Json)).ToArray(),
             claimRows = records?.Keys.Cast<long>().Select(id => new { id, claim = JsonSerializer.SerializeToElement(records[id], Json) }).ToArray(),
             opaqueRows = OpaqueRows(accounting),
+            mechanical = MechanicalState(),
             coreAssembly = engine.Assembly.FullName, coreModule = engine.Assembly.ManifestModule.ModuleVersionId,
             coreCopies = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.GetType("Concealment.Accounting.AccountingApi", false) != null),
             oldGrantController = PluginType.Assembly.GetType("Shared.Concealment.ProductionBoostManager", false) != null,

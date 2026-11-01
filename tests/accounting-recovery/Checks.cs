@@ -49,7 +49,37 @@ partial class Subject {
    Check(!subject.TryBegin(Group(unaffected),()=>{}),scenario+" outstanding complete claim cannot be replaced either");
   }
   Lifetime();
+  EarlyStop();
   Console.WriteLine($"PASS {checks} exact-production recovery/admission/save/reload assertions; inert native collaborators");
+ }
+
+ void EarlyStop(){
+  foreach(string scenario in new[]{"missing-root","missing-member","complete"})
+  foreach(bool recoverFirst in new[]{false,true}){
+   MyEntities.Grids.Clear();MyCubeGridGroups.Static=new();
+   var grids=Grids(10,11);var unrelated=Grids(20,21);var subject=new Subject();
+   subject.plugin.Manager.Accounting=subject;ConcealmentRuntime.Instance.Manager=subject.plugin.Manager;
+   if(scenario!="missing-root")subject.Load(grids[0],subject.Row(10,[10,11],"early-stop-unpaid",true));
+   if(scenario!="missing-member")subject.Load(grids[1],subject.Row(10,[10,11],"early-stop-unpaid"));
+   if(recoverFirst)subject.Update();
+   int observations=AccountingApi.Observations,restores=AccountingApi.CacheRestores,stops=AccountingApi.Stops;
+   subject.Stop();subject.Stop();subject.Update();
+   Check(subject.stopped&&subject.restored.Count==0,scenario+" early stop drains pending recovery");
+   Check(AccountingApi.Observations==observations&&AccountingApi.CacheRestores==restores,scenario+" stop does not observe or restore rate cache");
+   Check(AccountingApi.Stops==stops+1,scenario+" repeated stop cancels host exactly once");
+   Check(grids.All(g=>g.Suppressed),scenario+" early stop suspends full rejected closure");
+   Check(unrelated.All(g=>!g.Suppressed),scenario+" unrelated grids remain live");
+   Check(!subject.TryBegin(Group(grids),()=>throw new Exception("stopped capture")),scenario+" stopped group cannot start interval");
+   if(scenario=="complete")Check(subject.plugin.Manager.Restored.Count==1&&subject.records.Values.All(r=>r.Rejected==null),"complete pending group recovers without fabricated rejection");
+   else Check(subject.records.Values.All(r=>r.Rejected!=null),scenario+" incomplete pending group rejected");
+   for(int save=0;save<2;save++){
+    MySession.Static.ElapsedGameTime+=TimeSpan.FromTicks(160000);
+    var builders=grids.Select(g=>{var b=new MyObjectBuilder_CubeGrid();Saving(g,b);Check(b.Raw!=null,scenario+" stopped serializer covers each loaded member");return b;}).ToArray();
+    var next=new Subject();for(int i=0;i<grids.Length;i++)next.Restore(grids[i],builders[i]);next.Update();
+    Check(next.records.Values.All(r=>r.Epoch=="early-stop-unpaid"),scenario+" saved epoch preserved");
+    if(scenario!="complete")Check(next.Blocks(Group(grids))&&grids.All(g=>g.Suppressed),scenario+" reload preserves group refusal");
+   }
+  }
  }
  void Lifetime(){
   MyEntities.Grids.Clear();MyCubeGridGroups.Static=new();

@@ -151,8 +151,10 @@ Uncovered members of the loaded physical/logical closure retain opaque copies of
 the surviving evidence. No missing root profile or stock baseline is invented.
 These groups stay suspended and refuse admission, capture and reveal through
 subsequent scans and world saves/reloads; unaffected groups proceed independently.
-An update failure stops scheduling, profiling and commands. Complete groups settle
-before stopping; unpaid/rejected/opaque claims and legacy receipts keep their
+An update failure stops scheduling, profiling and commands. Already recovered complete
+groups settle before stopping. Pending restoration still establishes group recovery
+or quarantine if the first update fails, without starting observation or profiling.
+Unpaid/rejected/opaque claims and legacy receipts keep their
 world-owned builder serializers and update guards through later ordinary saves.
 Disposing the plugin while that world is loaded has the same retention rule.
 The native world unload event releases the retained owner, hooks and callbacks;

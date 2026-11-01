@@ -158,32 +158,36 @@ internal sealed class StandaloneAccounting : IDisposable
                 if (File.Exists(cache) && new FileInfo(cache).Length <= AccountingMetadata.MaximumBytes) AccountingApi.CacheRestore(File.ReadAllText(cache));
             }
             catch (Exception e) { plugin.Log.Warning(e, "Rate cache unavailable; native profiling will rebuild it"); }
-            foreach (var group in restored.Values.GroupBy(r => r.Record.Root))
-            {
-                var root = group.FirstOrDefault(r => r.Grid.EntityId == group.Key);
-                try
-                {
-                    if (root.Record?.Profiles == null || root.Record.World != AccountingStock.World || root.Record.Profiles.Length == 0
-                        || !root.Record.Members.Order().SequenceEqual(group.Select(g => g.Grid.EntityId).Order())
-                        || group.Any(g => g.Record.Rejected != null || g.Record.Epoch != root.Record.Epoch || g.Record.World != root.Record.World || !g.Record.Members.SequenceEqual(root.Record.Members)))
-                        throw new InvalidDataException("Incomplete/mismatched standalone checkpoint");
-                    var physical = MyCubeGridGroups.Static.Physical.GetGroup(root.Grid) ?? throw new InvalidDataException("Missing physical group");
-                    var concealed = new ConcealGroup(physical);
-                    if (!concealed.Grids.Select(g => g.EntityId).Order().SequenceEqual(root.Record.Members.Order())) throw new InvalidDataException("Saved accounting topology changed");
-                    AccountingStock.RestoreLoadedEngines(concealed.Grids, group.Select(g => g.Builder).ToArray(), root.Record.StockHash);
-                    foreach (var member in concealed.Grids) records[member.EntityId] = root.Record;
-                    concealed.RestoreProjectors(root.Record.Projectors);
-                    plugin.Manager.RestoreConcealed(concealed);
-                }
-                catch (Exception e)
-                {
-                    RejectRecovery(group.ToArray(), e.Message);
-                    plugin.Log.Error(e, "Accounting group {0} remains suspended; entitlement preserved", group.Key);
-                }
-            }
-            restored.Clear();
+            RecoverPending();
         }
         AccountingApi.UpdateObservations();
+    }
+    private void RecoverPending()
+    {
+        foreach (var group in restored.Values.GroupBy(r => r.Record.Root))
+        {
+            var root = group.FirstOrDefault(r => r.Grid.EntityId == group.Key);
+            try
+            {
+                if (root.Record?.Profiles == null || root.Record.World != AccountingStock.World || root.Record.Profiles.Length == 0
+                    || !root.Record.Members.Order().SequenceEqual(group.Select(g => g.Grid.EntityId).Order())
+                    || group.Any(g => g.Record.Rejected != null || g.Record.Epoch != root.Record.Epoch || g.Record.World != root.Record.World || !g.Record.Members.SequenceEqual(root.Record.Members)))
+                    throw new InvalidDataException("Incomplete/mismatched standalone checkpoint");
+                var physical = MyCubeGridGroups.Static.Physical.GetGroup(root.Grid) ?? throw new InvalidDataException("Missing physical group");
+                var concealed = new ConcealGroup(physical);
+                if (!concealed.Grids.Select(g => g.EntityId).Order().SequenceEqual(root.Record.Members.Order())) throw new InvalidDataException("Saved accounting topology changed");
+                AccountingStock.RestoreLoadedEngines(concealed.Grids, group.Select(g => g.Builder).ToArray(), root.Record.StockHash);
+                foreach (var member in concealed.Grids) records[member.EntityId] = root.Record;
+                concealed.RestoreProjectors(root.Record.Projectors);
+                plugin.Manager.RestoreConcealed(concealed);
+            }
+            catch (Exception e)
+            {
+                RejectRecovery(group.ToArray(), e.Message);
+                plugin.Log.Error(e, "Accounting group {0} remains suspended; entitlement preserved", group.Key);
+            }
+        }
+        restored.Clear();
     }
     private void RejectRecovery((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group, string reason)
     {
@@ -356,7 +360,10 @@ internal sealed class StandaloneAccounting : IDisposable
     {
         if (stopped) return;
         stopped = true;
-        AccountingApi.EndStandaloneSession();
+        // The first manager update can fail before recovery. Protect the whole
+        // restored group before leaving only its serializer/guards running.
+        try { RecoverPending(); }
+        finally { AccountingApi.EndStandaloneSession(); }
     }
 
     public void Dispose()

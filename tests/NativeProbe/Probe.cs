@@ -36,7 +36,18 @@ public sealed partial class Probe : IPlugin
     private static object Plugin => PluginType.GetProperty("Instance").GetValue(null);
     private static object Manager => Plugin?.GetType().GetProperty("Manager").GetValue(Plugin);
     private static object Config => Plugin?.GetType().GetProperty("ConfigData").GetValue(Plugin);
-    public void Init(object gameInstance) { root = Environment.GetEnvironmentVariable("EXTRACTION_PROBE_ROOT"); Directory.CreateDirectory(root); }
+    public void Init(object gameInstance)
+    {
+        root = Environment.GetEnvironmentVariable("EXTRACTION_PROBE_ROOT"); Directory.CreateDirectory(root);
+        string reference = Environment.GetEnvironmentVariable("EXTRACTION_CLUSTER_REFERENCE");
+        if (!string.IsNullOrEmpty(reference))
+        {
+            // Isolated native references stage definition-only mods. Install only
+            // the existing local-mod loader, leaving Cluster lifecycle/clocks dormant.
+            var assembly = Assembly.LoadFrom(reference);
+            new Harmony("ExtractionReference.local-mods").CreateClassProcessor(assembly.GetType("ClusterPlugin.LocalWorldModsPatch")).Patch();
+        }
+    }
     public void Dispose() { }
     public void Update()
     {
@@ -76,6 +87,9 @@ public sealed partial class Probe : IPlugin
             case "recovery-fixtures": return RecoveryFixtures();
             case "clock-reference": return BeginClockReference(r);
             case "clock-model": return ClockModel(r);
+            case "clock-content-ready": return new { ready = (bool)PluginType.Assembly.GetType("Concealment.Accounting.AccountingApi").GetMethod("ContentReady").Invoke(null, null) };
+            case "cluster-reference-host": return ClusterReferenceHost();
+            case "factory-fixture": return FactoryFixture();
             case "environment": return EnvironmentFixtures();
             case "detached-commit": return DetachedCommitChecks();
             case "shift":

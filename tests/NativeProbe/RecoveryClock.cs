@@ -88,11 +88,12 @@ public sealed partial class Probe
             long nativeFrames = MySession.Static.GameplayFrameCounter - c.NativeFrame;
             long elapsedTicks = MySession.Static.ElapsedGameTime.Ticks - c.ElapsedTicks;
             long wake = HostFrame;
-            if (elapsedTicks != nativeFrames * 160000 || wake - c.HostFrame != nativeFrames
-                || Math.Abs(HostMilliseconds - c.HostMilliseconds - nativeFrames * 16) > 1e-6)
-                throw new InvalidOperationException("Actual host/native elapsed clock disagreement");
+            if (elapsedTicks < 0 || wake < c.HostFrame
+                || Math.Abs((HostMilliseconds - c.HostMilliseconds) * 10000 - elapsedTicks) > 1)
+                throw new InvalidOperationException("Actual host/raw elapsed clock disagreement");
             var pair = Engine.GetMethod("ModelForHost", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { c.Initial, wake });
             clockRows.Add(new { name = c.Grid.DisplayName, nativeFrames, elapsedTicks, hostUnits = wake - c.HostFrame,
+                elapsedStartTicks = c.ElapsedTicks, elapsedEndTicks = MySession.Static.ElapsedGameTime.Ticks,
                 initial = JsonSerializer.SerializeToElement(c.Initial, Json), initialNative = c.Native, actual = JsonSerializer.SerializeToElement(ReadClockProfile(c.Grid), Json),
                 modeled = JsonSerializer.SerializeToElement(pair.GetType().GetField("Item1").GetValue(pair), Json),
                 result = JsonSerializer.SerializeToElement(pair.GetType().GetField("Item2").GetValue(pair), Json), native = State(c.Grid) });

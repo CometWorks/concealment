@@ -9,6 +9,7 @@
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
 
     <TargetFramework>net10.0</TargetFramework>
+    <PathMap>$(RepoRoot)=/_/concealment</PathMap>
 
     <!-- Ensure SDK generates assembly attributes (no need for AssemblyInfo) -->
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
@@ -309,7 +310,7 @@
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest"
           Pack="true" PackagePath="" />
-    <None Include="$(RepoRoot)Shared/Accounting/LICENSE;$(RepoRoot)Shared/Accounting/NOTICE"
+    <None Include="$(RepoRoot)ServerPlugin/Accounting/LICENSE;$(RepoRoot)ServerPlugin/Accounting/NOTICE"
           Link="accounting/%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

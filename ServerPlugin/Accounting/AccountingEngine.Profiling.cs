@@ -1,5 +1,5 @@
 // Copyright (c) 2026 CometWorks. Extracted from Cluster (MIT origin).
-// See Shared/Accounting/LICENSE and NOTICE for the retained permission notice.
+// See ServerPlugin/Accounting/LICENSE and NOTICE for the retained permission notice.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -55,6 +55,12 @@ internal static partial class AccountingEngine
 	private static readonly Dictionary<long, Census> CensusByGroup = new();
 	private static long m_lastObservationAdmissionFrame;
 	private static MySession m_profileSession;
+	internal static void EndStandaloneSession()
+	{
+		foreach (var census in CensusByGroup.Values) { census.SunCancellation.Cancel(); census.SunCancellation.Dispose(); }
+		CensusByGroup.Clear(); Measurements.Clear(); Attempted.Clear(); PerBlockRates.Clear(); Results.Clear();
+		m_profileSession = null;
+	}
 	private static void EnsureProfilingSession()
 	{
 		if (ReferenceEquals(m_profileSession, MySession.Static)) return;

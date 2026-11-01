@@ -363,8 +363,10 @@ public sealed class DynamicConcealmentManager : IDisposable
     {
         if (!ConcealmentRuntime.StandaloneActive) return true;
         if ((__instance.Flags & ConcealGroup.ConcealedFlag) != 0) return false;
+#if MAGNETAR
         if (ConcealmentRuntime.Instance.ConfigData.ProductionConcealment == ProductionConcealmentMode.Approximate)
             return true;
+#endif
 
         if (!(__instance is MyCubeBlock block))
             return true;

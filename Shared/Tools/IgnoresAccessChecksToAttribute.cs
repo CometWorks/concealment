@@ -1,10 +1,13 @@
-// The IgnoresAccessChecksToAttribute class required to use publicized assemblies at runtime.
-// Defined only when the plugin is built by Magnetar (or Pulsar); the Krafs.Publicizer package
-// provides it when the project is built in an IDE or by msbuild (LOCAL_BUILD).
+// Define the IgnoresAccessChecksToAttribute class required to use publicized assemblies at runtime.
+// Define the class only if the project is built by the plugin loader, because the Krafs.Publicizer
+// provides this already if the project is built directly in an IDE or by running msbuild.
 #if !LOCAL_BUILD
 
 namespace System.Runtime.CompilerServices;
 
+/* Uncomment to enable publicizer support
+
+// This code is required in production builds when publicizer support is enabled.
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
 public sealed class IgnoresAccessChecksToAttribute : Attribute
 {
@@ -15,5 +18,7 @@ public sealed class IgnoresAccessChecksToAttribute : Attribute
 
     public string AssemblyName { get; }
 }
+
+*/
 
 #endif

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 CometWorks. Extracted from Cluster (MIT origin).
-// See Shared/Accounting/LICENSE and NOTICE for the retained permission notice.
+// See ServerPlugin/Accounting/LICENSE and NOTICE for the retained permission notice.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -33,7 +33,9 @@ internal static partial class AccountingEngine
 	private static readonly Dictionary<long, OfflineResult> Results = new();
 	internal static long Frame => checked((long)Math.Floor(Host.ClockMilliseconds() / 16));
 	internal const long FramesPerAuthorityHour = 3600000 / 16;
-	internal static long MaxFrames => checked((long)(HostSettings.GetInt("offline.compensateMaxHours") * (3600 / Host.ClockFrameSeconds)));
+	// Both hosts address elapsed WORLD time in 16 ms clock units. Standalone's
+	// native resource phase is 1/60 s per engine frame; it is not the elapsed cap.
+	internal static long MaxFrames => checked(HostSettings.GetInt("offline.compensateMaxHours") * FramesPerAuthorityHour);
 
 	/// <summary>Runs once, at the shared recovery seam, before any entity is instantiated. The source
 	/// save is immutable: a failed wake re-reads it; an ordinary new-generation Final drops profiles.</summary>
@@ -86,7 +88,7 @@ internal static partial class AccountingEngine
 		return (JsonSerializer.Deserialize<OfflineProfile[]>(profiles, OfflineProfile.Json) ?? []).Select(p =>
 		{
 			if (p.ContentHash != ContentHash(p.Definitions)) return new OfflineResult { Group = p.Group, Skipped = "content mismatch", Confidence = "Frozen" };
-			return OfflineModel.Simulate(p, checked(p.SimulatedThrough + (long)(hours * (3600 / p.ClockFrameSeconds))), MaxFrames);
+			return OfflineModel.Simulate(p, checked(p.SimulatedThrough + (long)(hours * FramesPerAuthorityHour)), MaxFrames);
 		}).ToArray();
 	}
 
@@ -294,6 +296,11 @@ internal static partial class AccountingEngine
 		foreach (var production in after.Production.Where(p => !p.Refinery))
 		{
 			var block = (MyObjectBuilder_Assembler)blocks[production.Block];
+			var basis = before.Production.Single(p => p.Block == production.Block);
+			var actual = (block.Queue ?? []).Select(q => (((MyDefinitionId)q.Id).ToString(), (decimal)q.Amount, q.ItemId ?? 0));
+			if (block.CurrentProgress != (float)basis.Progress
+				|| !actual.SequenceEqual(basis.Queue.Select(q => (q.Recipe, q.Amount, q.ItemId))))
+				throw new InvalidDataException("Frozen production queue differs from profile");
 			uint next = block.NextItemId;
 			var queue = production.Queue.Select(q => new MyObjectBuilder_ProductionBlock.QueueItem { Id = MyDefinitionId.Parse(q.Recipe), Amount = (MyFixedPoint)q.Amount, ItemId = next++ }).ToArray();
 			writes.Add(() => { block.Queue = queue; block.NextItemId = next; block.CurrentProgress = (float)production.Progress; });

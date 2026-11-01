@@ -94,18 +94,18 @@ The host can use `!conceal run [distance]`, `!conceal reveal [distance]`,
 these remain server commands requiring Space Master permission. A joining
 client forwards chat commands to the server as usual.
 
-Client-hosted production banks are stored in `ConcealmentBanks.jsonl` inside
+Client-hosted production banks retain their existing boost implementation and are stored in `ConcealmentBanks.jsonl` inside
 each world's save folder, so switching worlds does not mix catch-up time.
 Magnetar retains its existing bank file under the server's user-data folder.
 
 ## Offline accounting
 
-Standalone Concealment enables whole-group accounting by default with `Approximate`.
+Standalone Magnetar Concealment enables whole-group accounting by default with `Approximate`.
 It profiles eligible groups while live, suspends their native updates, and settles
 production, power, fuel, gas, storage and zone upkeep before revealing them. The
 elapsed compensation cap defaults to 72 hours (`OfflineCompensationMaxHours`);
 excess is forfeited through the actual reveal time. Explicit `Off` and `Conceal`
-choices keep their meanings. Native world time advances 16 ms per engine frame;
+choices keep their meanings. The cap uses elapsed world time (225,000 clock units per hour). Native world time advances 16 ms per engine frame;
 resource phases retain native 60 Hz units, and server downtime earns nothing.
 
 Profiles, stock identities and application receipts live in grid object builders,

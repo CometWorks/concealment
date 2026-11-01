@@ -40,8 +40,8 @@ public sealed class ConcealmentRuntime : IDisposable
         Instance = this;
         if (!ClusterMode)
         {
-            MySession.BeforeLoading += BeginSession;
-            MySession.OnUnloading += EndSession;
+            typeof(MySession).GetEvent("BeforeLoading").AddEventHandler(null, (Action)BeginSession);
+            typeof(MySession).GetEvent("OnUnloading").AddEventHandler(null, (Action)EndSession);
         }
     }
 
@@ -148,8 +148,8 @@ public sealed class ConcealmentRuntime : IDisposable
         if (disposed)
             return;
         disposed = true;
-        MySession.BeforeLoading -= BeginSession;
-        MySession.OnUnloading -= EndSession;
+        typeof(MySession).GetEvent("BeforeLoading").RemoveEventHandler(null, (Action)BeginSession);
+        typeof(MySession).GetEvent("OnUnloading").RemoveEventHandler(null, (Action)EndSession);
         EndSession();
         Instance = null;
     }

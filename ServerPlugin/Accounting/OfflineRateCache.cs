@@ -15,6 +15,7 @@ internal static class OfflineRateCache
 	private static readonly Dictionary<string, Entry> Contributions = new(StringComparer.Ordinal);
 	private static readonly Dictionary<string, int> Epochs = new(StringComparer.Ordinal);
 	private sealed record Snapshot(Entry[] Entries, Dictionary<string, int> Epochs);
+	internal static void Reset() { lock (Sync) { Entries.Clear(); Contributions.Clear(); Epochs.Clear(); } }
 	internal static bool TryGet(string key, out Entry entry)
 	{
 		lock (Sync) return Entries.TryGetValue(key, out entry) && !entry.Scripted;

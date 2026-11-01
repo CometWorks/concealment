@@ -73,6 +73,7 @@ public sealed partial class Probe : IPlugin
                 return Inspect();
             case "fixtures": return Fixtures();
             case "environment": return EnvironmentFixtures();
+            case "detached-commit": return DetachedCommitChecks();
             case "shift":
                 var shifted = Named(r.GetProperty("name").GetString());
                 var pose = shifted.WorldMatrix; pose.Translation += new Vector3D(.001, 0, 0); shifted.WorldMatrix = pose;
@@ -120,6 +121,8 @@ public sealed partial class Probe : IPlugin
         var records = accounting?.GetType().GetField("records", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary;
         object production = Manager?.GetType().GetProperty("Production")?.GetValue(Manager);
         var legacyType = PluginType.Assembly.GetType("Shared.Concealment.LegacyBoostMigration");
+        var host = PluginType.Assembly.GetType("Concealment.Accounting.Host");
+        var hostOwner = PluginType.Assembly.GetType("Concealment.Accounting.AccountingApi").GetField("owner", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
         return new
         {
             clusterMode = PluginType.GetProperty("ClusterMode").GetValue(null), manager = Manager != null,
@@ -129,7 +132,13 @@ public sealed partial class Probe : IPlugin
             censusCount = censuses?.Count, claims = records?.Values.Cast<object>().Distinct().Select(v => JsonSerializer.SerializeToElement(v, Json)).ToArray(),
             coreAssembly = engine.Assembly.FullName, coreModule = engine.Assembly.ManifestModule.ModuleVersionId,
             coreCopies = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.GetType("Concealment.Accounting.AccountingApi", false) != null),
-            hostOwner = PluginType.Assembly.GetType("Concealment.Accounting.AccountingApi").GetField("owner", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),
+            oldGrantController = PluginType.Assembly.GetType("Shared.Concealment.ProductionBoostManager", false) != null,
+            hostOwner,
+            accountingClock = hostOwner == null ? null : new {
+                frame = engine.GetProperty("Frame", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),
+                maxFrames = engine.GetProperty("MaxFrames", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),
+                resourceFrameSeconds = host.GetField("ClockFrameSeconds", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),
+            },
             provider = ClusterNodeLink.Current?.GetType().AssemblyQualifiedName,
             providerConnected = ClusterNodeLink.Current?.IsConnected,
             legacy = production == null ? null : new {
@@ -138,7 +147,7 @@ public sealed partial class Probe : IPlugin
                 banks = legacyType.GetField("BoostBankFrames", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),
                 opaque = legacyType.GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(production),
             },
-            patches = Harmony.GetAllPatchedMethods().Where(m => Harmony.GetPatchInfo(m).Owners.Contains("Concealment")).Select(m => m.DeclaringType.FullName + "." + m.Name).ToArray(),
+            patches = Harmony.GetAllPatchedMethods().Where(m => Harmony.GetPatchInfo(m).Owners.Any(o => o == "Concealment" || o.StartsWith("Concealment."))).Select(m => m.DeclaringType.FullName + "." + m.Name).ToArray(),
             grids = MyEntities.GetEntities().OfType<MyCubeGrid>().Where(g => g.DisplayName.StartsWith("extract-")).OrderBy(g => g.DisplayName).Select(State).ToArray(),
         };
     }
@@ -176,7 +185,7 @@ public sealed partial class Probe : IPlugin
         var records = accounting?.GetType().GetField("records", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary;
         var model = PluginType.Assembly.GetType("Concealment.Accounting.AccountingApi").GetMethod("Model");
         long wake = (long)Math.Floor(MySession.Static.ElapsedGameTime.TotalMilliseconds / 16);
-        long cap = (int)Config.GetType().GetProperty("OfflineCompensationMaxHours").GetValue(Config) * 3600L * 60;
+        long cap = (int)Config.GetType().GetProperty("OfflineCompensationMaxHours").GetValue(Config) * (3600000L / 16);
         return records?.Values.Cast<object>().Distinct().SelectMany(record =>
         {
             var json = JsonSerializer.SerializeToElement(record, Json);

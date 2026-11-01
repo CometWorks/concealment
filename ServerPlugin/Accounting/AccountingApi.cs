@@ -46,6 +46,14 @@ public static class AccountingApi
     {
         if (!configured) throw new InvalidOperationException("Accounting host has not been configured.");
     }
+    internal static void EndStandaloneSession()
+    {
+        if (owner != "Standalone") return;
+        AccountingEngine.EndStandaloneSession();
+        OfflineRateCache.Reset();
+        configured = false;
+        owner = null;
+    }
     public static VRageMath.Vector3D SolarPivot(VRageMath.Vector3 pivot, VRageMath.MatrixD matrix) => AccountingEngine.SolarPivot(pivot, matrix);
     public static bool CanMeasureAssembler(bool repeat, bool disassemble, double progress) => AccountingEngine.CanMeasureAssembler(repeat, disassemble, progress);
     public static long ObservationClockFrames(int seconds) => AccountingEngine.ObservationClockFrames(seconds);

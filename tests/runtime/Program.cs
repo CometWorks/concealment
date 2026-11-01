@@ -25,6 +25,20 @@ static class Program
     private static void OtherPrefix() { }
     public static void Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--cluster")
+        {
+            var settings = new PluginConfig();
+            MySession.Static = World("/configured-cluster");
+            using var disabled = new ConcealmentRuntime(settings, Log, "configured-cluster");
+            MySession.Loading();
+            disabled.Update();
+            Check(ConcealmentRuntime.ClusterMode && disabled.Manager == null && disabled.Tick == 0,
+                "configured Cluster mode creates no manager before loading or on update");
+            Check(ConcealmentCommands.Execute(disabled, "!conceal off", null).Contains("only") && settings.Enabled,
+                "configured mode commands do not mutate settings");
+            Console.WriteLine($"PASS: {checks} configured mode lifecycle checks");
+            return;
+        }
         const string owner = "concealment.runtime.tests";
         var other = new Harmony("another.plugin.tests");
         var target = AccessTools.Method(typeof(ConcealmentManager), nameof(ConcealmentManager.PatchTarget));
@@ -102,6 +116,13 @@ static class Program
             MySession.Static = World("/world/recovered");
             runtime.Update();
             Check(runtime.Manager != null, "failure in one world does not disable later worlds");
+            MySession.Unload();
+            MySession.Static = new MySession { CurrentPath = "/world/loading" };
+            MySession.Loading();
+            Check(runtime.Manager != null && runtime.Tick == 0, "restore hooks exist before native grids load");
+            runtime.Update();
+            Check(runtime.Tick == 0, "preload registration does not simulate an unready world");
+            MySession.Static.Ready = true;
         }
         Check(ConcealmentRuntime.Instance == null, "plugin disposal clears static runtime");
         using (var dedicated = new ConcealmentRuntime(config, Log, owner, "/legacy/server-data"))

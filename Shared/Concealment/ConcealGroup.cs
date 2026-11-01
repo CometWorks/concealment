@@ -31,6 +31,10 @@ public sealed class ConcealGroup
     public long Id { get; }
     public bool IsConcealed { get; private set; }
     public BoundingBoxD WorldAabb { get; private set; }
+#if !MAGNETAR
+    public HashSet<long> ProductionCatchupGridIds { get; } = new HashSet<long>();
+    internal long ConcealedAtTick;
+#endif
     public List<MyCubeGrid> Grids { get; }
     public List<MyMedicalRoom> MedicalRooms { get; } = new List<MyMedicalRoom>();
     public List<MyCryoChamber> CryoChambers { get; } = new List<MyCryoChamber>();

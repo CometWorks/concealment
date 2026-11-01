@@ -1,5 +1,5 @@
 // Copyright (c) 2026 CometWorks. Extracted from Cluster (MIT origin).
-// See Shared/Accounting/LICENSE and NOTICE for the retained permission notice.
+// See ServerPlugin/Accounting/LICENSE and NOTICE for the retained permission notice.
 using System;
 using System.IO;
 using System.Text;

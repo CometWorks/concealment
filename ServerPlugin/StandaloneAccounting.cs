@@ -320,6 +320,7 @@ internal sealed class StandaloneAccounting : IDisposable
     public void Dispose()
     {
         disposed = true;
+        AccountingApi.EndStandaloneSession();
         foreach (var method in patches.Distinct()) harmony.Unpatch(method.Target, method.Patch);
     }
 }

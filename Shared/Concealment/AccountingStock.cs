@@ -9,6 +9,7 @@ using Concealment.Accounting;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game.Entities;
 using Sandbox.Game.World;
+using SpaceEngineers.Game.Entities.Blocks;
 using VRage.Game;
 using VRage.Game.ObjectBuilders.Components.Beacon;
 using VRage.ObjectBuilders;
@@ -60,4 +61,40 @@ internal static class AccountingStock
         return Hash(Encoding.UTF8.GetBytes(text.ToString()));
     }
     internal static Dictionary<long, MyObjectBuilder_EntityBase> Builders(IEnumerable<MyCubeGrid> grids) => grids.ToDictionary(g => g.EntityId, g => g.GetObjectBuilder());
+
+    internal static double[][] Poses(IEnumerable<MyCubeGrid> grids) => grids.Select(g =>
+    {
+        var m = g.WorldMatrix;
+        return new[] { m.M41, m.M42, m.M43, m.M11, m.M12, m.M13, m.M21, m.M22, m.M23, m.M31, m.M32, m.M33 };
+    }).ToArray();
+    internal static bool SamePoses(double[][] before, double[][] after) => before.Length == after.Length
+        && before.Zip(after).All(p => p.First.Length == 12 && p.Second.Length == 12
+            && p.First.Zip(p.Second).Select((v, i) => double.IsFinite(v.First) && double.IsFinite(v.Second)
+                // Native save/load rebuilds the orthonormal basis through float Up.
+                // Positions remain exact; rotation permits only that native precision.
+                && Math.Abs(v.First - v.Second) <= (i < 3 ? 0 : 1e-6)).All(equal => equal));
+
+    internal static void RestoreLoadedEngines(IEnumerable<MyCubeGrid> grids, MyObjectBuilder_CubeGrid[] saved, string stockHash)
+    {
+        // Native Init clamps H2 capacity, although UpdateCapacity can save one
+        // paid intake step above nameplate. Restore only that exact load change,
+        // after validating the complete saved AND loaded group's other stocks.
+        if (Fingerprint(saved) != stockHash) throw new InvalidDataException("Saved stocks differ from accounting claim");
+        var live = Builders(grids).Values.Cast<MyObjectBuilder_CubeGrid>().ToArray();
+        var blocks = live.SelectMany(g => g.CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
+        var engines = grids.SelectMany(g => g.GetFatBlocks()).OfType<MyGasFueledPowerProducer>().ToDictionary(e => e.EntityId);
+        var restore = new List<Action>();
+        foreach (var original in saved.SelectMany(g => g.CubeBlocks).OfType<MyObjectBuilder_FueledPowerProducer>())
+        {
+            if (!engines.TryGetValue(original.EntityId, out var engine)) continue;
+            var current = (MyObjectBuilder_FueledPowerProducer)blocks[original.EntityId];
+            if (original.Capacity <= engine.GasCapacity) continue;
+            if (!float.IsFinite(original.Capacity) || original.Capacity - engine.GasCapacity > engine.GasCapacity * 3 / 60
+                || current.Capacity != engine.GasCapacity) throw new InvalidDataException("Unexpected native engine load stock");
+            current.Capacity = original.Capacity;
+            restore.Add(() => engine.Capacity = original.Capacity);
+        }
+        if (Fingerprint(live) != stockHash) throw new InvalidDataException("Loaded stocks differ from accounting claim");
+        foreach (var write in restore) write();
+    }
 }

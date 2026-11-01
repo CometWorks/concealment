@@ -258,6 +258,16 @@ internal static partial class AccountingEngine
 		foreach (var store in after.Storage)
 		{
 			MyObjectBuilder_CubeBlock block = blocks[store.Block];
+			var basis = before.Storage.Single(s => s.Block == store.Block);
+			bool matches = block switch
+			{
+				MyObjectBuilder_BatteryBlock b => b.CurrentStoredPower == (float)basis.Amount,
+				MyObjectBuilder_GasTank t => t.FilledRatio == (float)(basis.Capacity > 0 ? basis.Amount / basis.Capacity : 0),
+				MyObjectBuilder_FueledPowerProducer e => e.Capacity == (float)basis.Amount,
+				MyObjectBuilder_JumpDrive j => j.StoredPower == (float)basis.Amount,
+				_ => false,
+			};
+			if (!matches) throw new InvalidDataException("Frozen reservoir differs from profile");
 			switch (store.Kind)
 			{
 				case "Battery": var battery = (MyObjectBuilder_BatteryBlock)block; writes.Add(() => battery.CurrentStoredPower = (float)store.Amount); break;

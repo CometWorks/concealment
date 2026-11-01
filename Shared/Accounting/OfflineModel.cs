@@ -34,6 +34,9 @@ internal static class OfflineModel
 			return result;
 		}
 		double elapsed = 0;
+		// Native H2 UpdateCapacity can retain one intake step above nameplate.
+		// Preserve that already-paid stock without ever increasing the overfill.
+		var storageCeilings = profile.Storage.Select(s => Math.Max(s.Capacity, s.Amount)).ToArray();
 		var inventories = profile.Inventories;
 		var poweredSources = profile.Sources.Select((source, index) => (Source: source, Index: index))
 			.Where(s => s.Source.PowerSink >= 0 && s.Source.IdlePower >= 0).GroupBy(s => s.Source.PowerSink).ToArray();
@@ -270,7 +273,7 @@ internal static class OfflineModel
 			for (int i = 0; i < storageRate.Length; i++)
 			{
 				var store = profile.Storage[i];
-				store.Amount = Math.Clamp(store.Amount + storageRate[i] * step, 0, store.Capacity);
+				store.Amount = Math.Clamp(store.Amount + storageRate[i] * step, 0, storageCeilings[i]);
 				if (store.TickFrames > 0 && store.Enabled)
 				{
 					store.ElapsedFrames += step;
@@ -670,7 +673,8 @@ internal static class OfflineModel
 			if (inventory.MaxVolume < 0 || inventory.MaxMass < 0) throw new InvalidDataException("Invalid offline inventory limits");
 		}
 		foreach (var s in p.Storage)
-			if (!double.IsFinite(s.Amount) || !double.IsFinite(s.Capacity) || s.Amount < -Epsilon || s.Amount > s.Capacity + Epsilon
+			if (!double.IsFinite(s.Amount) || !double.IsFinite(s.Capacity) || s.Amount < -Epsilon
+				|| s.Amount > s.Capacity + Epsilon && (s.Kind != "Engine" || s.Amount - s.Capacity > s.MaxInput * s.InputConversion + Epsilon)
 				|| s.PowerSink < -1 || s.PowerSink >= p.Sinks.Count
 				|| !double.IsFinite(s.IdlePower) || s.IdlePower < 0 && s.IdlePower != -1 || !double.IsFinite(s.OperationalPower) || s.OperationalPower < 0
 				|| !double.IsFinite(s.TickFrames) || s.TickFrames < 0 || s.TickFrames > 100
@@ -679,7 +683,7 @@ internal static class OfflineModel
 				|| s.Sampling && s.TickFrames <= 0
 				|| s.TickFrames > 0 && s.Kind != "Battery"
 				|| s.Capacity < 0 || !double.IsFinite(s.MaxInput) || s.MaxInput < 0 || !double.IsFinite(s.InputConversion) || s.InputConversion < 0)
-				throw new InvalidDataException("Invalid offline reservoir");
+				throw new InvalidDataException($"Invalid offline reservoir {s.Block} ({s.Kind}): amount={s.Amount:R}, capacity={s.Capacity:R}");
 		foreach (var source in p.Sources)
 			if (!double.IsFinite(source.Maximum) || source.Maximum < 0 || source.Storage < -1 || source.Storage >= p.Storage.Count
 				|| !double.IsFinite(source.FuelTickFrames) || source.FuelTickFrames < 0 || source.FuelTickFrames > 21600000

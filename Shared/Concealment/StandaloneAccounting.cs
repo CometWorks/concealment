@@ -27,6 +27,7 @@ internal sealed class StandaloneAccounting : IDisposable
         public string World, Epoch, StockHash, Signature, Rejected;
         public long Root, AppliedThrough, CheckpointTicks;
         public long[] Members = [], Projectors = [];
+        public double[][] Poses;
         public bool Concealed;
         public OfflineProfile[] Profiles;
     }
@@ -34,8 +35,9 @@ internal sealed class StandaloneAccounting : IDisposable
     // MyEntities.Load initializes native grids concurrently before the session is ready.
     private readonly ConcurrentDictionary<long, Record> records = new();
     private readonly ConcurrentDictionary<long, string> opaque = new();
-    private readonly ConcurrentDictionary<long, (MyCubeGrid Grid, Record Record)> restored = new();
+    private readonly ConcurrentDictionary<long, (MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)> restored = new();
     private bool recovered, disposed, applying, ownSnapshot;
+    private long nextCaptureWarning;
     private readonly Harmony harmony;
     private readonly List<(System.Reflection.MethodInfo Target, System.Reflection.MethodInfo Patch)> patches = new();
     internal bool Enabled => plugin.ConfigData.ProductionConcealment == ProductionConcealmentMode.Approximate;
@@ -110,7 +112,7 @@ internal sealed class StandaloneAccounting : IDisposable
             records[grid.EntityId] = record;
             if (record.Concealed)
             {
-                restored[grid.EntityId] = (grid, record);
+                restored[grid.EntityId] = (grid, record, (MyObjectBuilder_CubeGrid)builder.Clone());
                 ConcealGroup.SuppressUpdates(grid, null);
             }
         }
@@ -137,6 +139,7 @@ internal sealed class StandaloneAccounting : IDisposable
             CheckpointTicks = MySession.Static.ElapsedGameTime.Ticks,
             StockHash = grid.EntityId == record.Root ? record.StockHash : null,
             Signature = grid.EntityId == record.Root ? record.Signature : null,
+            Poses = grid.EntityId == record.Root ? record.Poses : null,
             Profiles = grid.EntityId == record.Root ? record.Profiles : null };
         string json = JsonSerializer.Serialize(stored, OfflineProfile.Json);
         if (json.Length > AccountingMetadata.MaximumBytes) throw new InvalidDataException("Standalone accounting claim exceeds storage limit");
@@ -166,6 +169,7 @@ internal sealed class StandaloneAccounting : IDisposable
                     var physical = MyCubeGridGroups.Static.Physical.GetGroup(root.Grid) ?? throw new InvalidDataException("Missing physical group");
                     var concealed = new ConcealGroup(physical);
                     if (!concealed.Grids.Select(g => g.EntityId).Order().SequenceEqual(root.Record.Members.Order())) throw new InvalidDataException("Saved accounting topology changed");
+                    AccountingStock.RestoreLoadedEngines(concealed.Grids, group.Select(g => g.Builder).ToArray(), root.Record.StockHash);
                     foreach (var member in concealed.Grids) records[member.EntityId] = root.Record;
                     concealed.RestoreProjectors(root.Record.Projectors);
                     plugin.Manager.RestoreConcealed(concealed);
@@ -198,13 +202,29 @@ internal sealed class StandaloneAccounting : IDisposable
     {
         if (!Enabled) { beforeFreeze(); return true; }
         if (!Ready || Blocks(group) || group.Grids.Any(g => AccountingEngine.Readiness(g) != null || g.MarkedForClose || g.IsPreview)) return false;
-        var profiles = Groups(group);
         ulong scope = unchecked((ulong)group.Grids.Min(g => g.EntityId));
-        if (!AccountingApi.Prepare(scope, profiles, group.Grids.ToArray(), false)) return false;
-        var captured = AccountingApi.Read(AccountingApi.Capture(scope, profiles, group.Grids.ToArray(), false));
-        if (captured.Length != profiles.Length) return false;
-        var record = new Record { World = AccountingStock.World, Epoch = Guid.NewGuid().ToString("N"), Root = group.Grids.Min(g => g.EntityId), Members = group.Grids.Select(g => g.EntityId).Order().ToArray(), Concealed = true, Profiles = captured };
-        if (JsonSerializer.Serialize(record, OfflineProfile.Json).Length > AccountingMetadata.MaximumBytes) throw new InvalidDataException("Accounting profile too large");
+        MyCubeGrid[][] profiles;
+        OfflineProfile[] captured;
+        Record record;
+        try
+        {
+            profiles = Groups(group);
+            if (!AccountingApi.Prepare(scope, profiles, group.Grids.ToArray(), false)) return false;
+            captured = AccountingApi.Read(AccountingApi.Capture(scope, profiles, group.Grids.ToArray(), false));
+            if (captured.Length != profiles.Length) return false;
+            record = new Record { World = AccountingStock.World, Epoch = Guid.NewGuid().ToString("N"), Root = group.Grids.Min(g => g.EntityId), Members = group.Grids.Select(g => g.EntityId).Order().ToArray(), Concealed = true, Profiles = captured };
+            if (JsonSerializer.Serialize(record, OfflineProfile.Json).Length > AccountingMetadata.MaximumBytes) throw new InvalidDataException("Accounting profile too large");
+        }
+        catch (Exception e) when (e is InvalidDataException or InvalidOperationException)
+        {
+            AccountingApi.CancelScope(scope);
+            if (Frame >= nextCaptureWarning)
+            {
+                nextCaptureWarning = Frame + 3600;
+                plugin.Log.Warning(e, "Accounting capture refused for group {0}; native simulation continues", group.Id);
+            }
+            return false;
+        }
         beforeFreeze();
         foreach (var grid in group.Grids) records[grid.EntityId] = record;
         // Protection is conservative while no live costs are settled. Keep native
@@ -216,7 +236,9 @@ internal sealed class StandaloneAccounting : IDisposable
     {
         if (!records.TryGetValue(group.Grids[0].EntityId, out var record) || !record.Concealed) return;
         record.Projectors = group.Projectors.ToArray();
-        record.Signature = AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray());
+        var ordered = group.Grids.OrderBy(g => g.EntityId).ToArray();
+        record.Signature = AccountingEngine.Signature(ordered, false);
+        record.Poses = AccountingStock.Poses(ordered);
         var builders = AccountingStock.Builders(group.Grids);
         record.StockHash = AccountingStock.Fingerprint(builders.Values.Cast<MyObjectBuilder_CubeGrid>());
         var blocks = builders.Values.Cast<MyObjectBuilder_CubeGrid>().SelectMany(g => g.CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
@@ -241,7 +263,8 @@ internal sealed class StandaloneAccounting : IDisposable
         {
             if (record.World != AccountingStock.World || group.Grids.Any(g => g.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(g.EntityId), g))
                 || !record.Members.Order().SequenceEqual(group.Grids.Select(g => g.EntityId).Order())
-                || AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray()) != record.Signature
+                || AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null) != record.Signature
+                || record.Poses != null && !AccountingStock.SamePoses(record.Poses, AccountingStock.Poses(group.Grids.OrderBy(g => g.EntityId)))
                 || Groups(group).SelectMany(g => g).Count() != record.Members.Length) throw new InvalidDataException("Accounting identity/topology/settings changed while concealed");
             original = AccountingStock.Builders(group.Grids);
             if (AccountingStock.Fingerprint(original.Values.Cast<MyObjectBuilder_CubeGrid>()) != record.StockHash) throw new InvalidDataException("Live stocks/queues/content changed while concealed");

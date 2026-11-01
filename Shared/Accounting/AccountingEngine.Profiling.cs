@@ -90,7 +90,7 @@ internal static partial class AccountingEngine
 		return null;
 	}
 
-	internal static string Signature(MyCubeGrid[] grids)
+	internal static string Signature(MyCubeGrid[] grids, bool includePose = true)
 	{
 		var text = new StringBuilder();
 		text.Append(MyFinalBuildConstants.APP_VERSION_STRING).Append('|').Append(HostSettings.GetInt("offline.solarSteps"))
@@ -99,7 +99,8 @@ internal static partial class AccountingEngine
 			.Append('|').Append(string.Join(",", MySession.Static.Mods.Select(m => m.PublishedFileId + ":" + m.PublishedServiceName + ":" + m.Name)));
 		foreach (var grid in grids)
 		{
-			text.Append(grid.EntityId).Append(':').Append(grid.WorldMatrix.ToString());
+			text.Append(grid.EntityId);
+			if (includePose) text.Append(':').Append(grid.WorldMatrix.ToString());
 			// Armor and partially built blocks occlude too; a fat-block-only census misses these edits.
 			foreach (var slim in grid.GetBlocks().OrderBy(b => b.Position.ToString(), StringComparer.Ordinal))
 				text.Append(';').Append(slim.Position).Append(':').Append(slim.BlockDefinition.Id).Append(':').Append(slim.Orientation).Append(':').Append(slim.BuildLevelRatio);

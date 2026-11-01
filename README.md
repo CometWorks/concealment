@@ -128,9 +128,27 @@ A nonblank `CLUSTER_GATEWAY_REGISTRY` fixes configured Cluster mode before manag
 or hooks are created. All autonomous Concealment scans, dynamic suppression, jobs,
 boost migration, commands and disposal reveal are inactive in that mode, regardless
 of connection/provider health or saved settings. Mode changes require a restart.
-Cluster explicitly invokes accounting contract 1, owns scheduling, authority clocks,
+Cluster explicitly invokes accounting contract 2, owns scheduling, authority clocks,
 partition Finals and application, and loads this same plugin implementation.
 No Cluster dependency or scheduler is required for standalone use.
+
+Profile schema 2 maps each saved 16 ms world-clock unit to one native resource
+frame; resource seconds remain 1/60. Unpaid schema-1 profiles with either known
+clock discriminator (`.016` or `1/60`) migrate on a detached copy, with an explicit
+`ClockMigration` result. Frame addresses, stocks, native timer phases and sun
+time stay intact. The immutable original remains the retry basis; already paid
+receipts earn no second interval. Partly advanced schema-1 profiles and unknown
+clocks are refused because their stock/phase history cannot be reconstructed.
+Keep the corrected Cluster adapter and pinned core together. Contract-1 adapters
+are incompatible; rollback requires the matching pre-upgrade world/Final/package,
+never an old binary over schema-2 claims. No retroactive adjustment is made to
+ordinary already-paid live stocks.
+
+Failed standalone recovery retains each surviving unpaid row and its rejection.
+Uncovered members of the loaded physical/logical closure retain opaque copies of
+the surviving evidence. No missing root profile or stock baseline is invented.
+These groups stay suspended and refuse admission, capture and reveal through
+subsequent scans and world saves/reloads; unaffected groups proceed independently.
 
 ## Grid Backups
 
@@ -174,6 +192,19 @@ dotnet run --project tests/runtime/RuntimeTests.csproj -c Release
 They cover host/client authority, loading and paused worlds, host-to-client
 transitions, world cleanup, recovery after a failure, keeping other plugins'
 patches, command validation, and config persistence. They do not launch the game.
+
+Targeted accounting checks (build the server plugin first):
+
+```sh
+dotnet run --project tests/accounting-clock/ClockChecks.csproj -c Release
+python3 tests/accounting-recovery/run.py /absolute/path/to/new/probe-output
+```
+
+The clock check consumes the built production DLL. The recovery check extracts
+the exact production recovery/save/admission methods and uses inert native
+collaborators; it is not a native game proof. `tests/NativeProbe` separately
+supports genuine incomplete-root rotor-group reloads and raw-clock live-stock
+prefix references through the actual loaded host.
 
 `tests/` holds an in-game test suite. It starts a Magnetar server with this working copy
 of the plugin, joins it with two headless game clients and drives them through the

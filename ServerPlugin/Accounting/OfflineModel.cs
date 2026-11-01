@@ -18,12 +18,21 @@ internal static class OfflineModel
 	{
 		Validate(profile);
 		if (wakeFrame < profile.SimulatedThrough || maxFrames < 0) throw new InvalidDataException("Offline clock moved backwards");
+		string migration = null;
+		if (profile.Schema == 1)
+		{
+			// Immutable unpaid Finals retain native rates/stocks/phases and raw frame
+			// addresses. Only their erroneous clock discriminator needs migration.
+			migration = profile.ClockFrameSeconds == .016 ? "schema1-0.016-to-native-frame" : "schema1-native-frame";
+			profile.Schema = OfflineProfile.CurrentSchema;
+			profile.ClockFrameSeconds = 1.0 / 60;
+		}
 		long requested = wakeFrame - profile.SimulatedThrough;
 		long frames = Math.Min(requested, maxFrames);
 		double engineFramesPerClockFrame = profile.ClockFrameSeconds * 60;
 		double duration = frames * engineFramesPerClockFrame;
 		var result = new OfflineResult { Group = profile.Group, FromFrame = profile.SimulatedThrough, Frames = frames,
-			CompensatedTo = wakeFrame, Confidence = profile.Confidence, Capped = requested > frames };
+			CompensatedTo = wakeFrame, Confidence = profile.Confidence, Capped = requested > frames, ClockMigration = migration };
 		var before = Totals(profile);
 		double energy = profile.Storage.Where(s => s.Kind is "Battery" or "Jump").Sum(s => s.Amount);
 		if (profile.Creative)
@@ -660,8 +669,8 @@ internal static class OfflineModel
 
 	internal static void Validate(OfflineProfile p)
 	{
-		if (p.Schema != OfflineProfile.CurrentSchema || p.SimulatedThrough < p.FrozenFrame || p.FrozenFrame < 0
-			|| !double.IsFinite(p.ClockFrameSeconds) || p.ClockFrameSeconds <= 0 || p.ClockFrameSeconds > 1
+		if (p.Schema is not (1 or OfflineProfile.CurrentSchema) || p.SimulatedThrough < p.FrozenFrame || p.FrozenFrame < 0
+			|| (p.Schema == 1 ? p.ClockFrameSeconds is not (.016 or (1.0 / 60)) || p.SimulatedThrough != p.FrozenFrame : p.ClockFrameSeconds != 1.0 / 60)
 			|| !double.IsFinite(p.ResourceFrameRemaining) || p.ResourceFrameRemaining <= 0 || p.ResourceFrameRemaining > 1
 			|| !double.IsFinite(p.SunFrame) || !double.IsFinite(p.SunPeriodFrames) || p.SunPeriodFrames < 0) throw new InvalidDataException("Invalid offline profile clock/schema");
 		foreach (var item in p.Items.Values) if (item.Volume < 0 || item.Mass < 0) throw new InvalidDataException("Invalid item dimensions");

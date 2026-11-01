@@ -17,7 +17,7 @@ namespace Concealment.Accounting;
 // assembly names and built plugins without linking a second copy of the model.
 public static class AccountingApi
 {
-    public const int Contract = 1;
+    public const int Contract = 2;
     private static bool configured;
     private static string owner;
     public static void Configure(string host, Dictionary<string, object> callbacks)
@@ -30,7 +30,7 @@ public static class AccountingApi
             if (host == "Cluster") return;
         }
         Host.ClockFrameSeconds = (double)callbacks["clockFrameSeconds"];
-        if (Host.ClockFrameSeconds is not (0.016 or (1.0 / 60))) throw new ArgumentException("Unsupported clock units");
+        if (Host.ClockFrameSeconds != 1.0 / 60) throw new ArgumentException("Accounting contract 2 requires one native frame per world-clock unit; update the host adapter");
         Host.ClockMilliseconds = (Func<double>)callbacks["clock"];
         Host.Setting = (Func<string, string>)callbacks["setting"];
         Host.CanProfile = (Func<ulong, uint, bool>)callbacks["admit"];

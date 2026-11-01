@@ -68,7 +68,6 @@ internal static partial class AccountingEngine
 	internal static (OfflineProfile Model, OfflineResult Result) ModelForHost(OfflineProfile profile, long wake)
 	{
 		if (profile.ContentHash != ContentHash(profile.Definitions)) throw new InvalidDataException("content mismatch");
-		if (profile.ClockFrameSeconds != Host.ClockFrameSeconds) throw new InvalidDataException("profile clock belongs to another host");
 		var model = JsonSerializer.Deserialize<OfflineProfile>(JsonSerializer.Serialize(profile, OfflineProfile.Json), OfflineProfile.Json);
 		double period = MySession.Static.Settings.EnableSunRotation ? MySession.Static.Settings.SunRotationIntervalMinutes * 60000.0 / 16 : 0;
 		if (model.SunPeriodFrames != period)

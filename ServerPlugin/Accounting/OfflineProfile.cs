@@ -9,7 +9,7 @@ namespace Concealment.Accounting;
 /// except resource ports (MW or gas/s). No wall-clock timestamps participate in simulation.</summary>
 internal sealed class OfflineProfile
 {
-	public const int CurrentSchema = 1;
+	public const int CurrentSchema = 2;
 	public static readonly JsonSerializerOptions Json = new() { IncludeFields = true };
 	public int Schema = CurrentSchema;
 	public long Group;
@@ -17,9 +17,9 @@ internal sealed class OfflineProfile
 	public string ContentHash;
 	public string[] Definitions = [];
 	public long FrozenFrame, SimulatedThrough;
-	// Existing captured clocks use floor(authority milliseconds / 16). Resource/timer rates
-	// use native 60 Hz engine frames; keep the conversion explicit at the model boundary.
-	public double ClockFrameSeconds = 0.016;
+	// Both hosts use floor(world milliseconds / 16): one unit is one native
+	// frame. Resource rates use 60 Hz seconds, independently of elapsed sun time.
+	public double ClockFrameSeconds = 1.0 / 60;
 	public double SunFrame, SunPeriodFrames;
 	public double ResourceFrameRemaining = 1;
 	public bool Creative, Simplified;
@@ -145,6 +145,7 @@ internal sealed class OfflineResult
 	public int Events;
 	public bool Capped;
 	public string Confidence, Skipped;
+	public string ClockMigration;
 	public double EnergyDelta;
 	public Dictionary<string, decimal> ItemDelta = [];
 	public Dictionary<long, double> ProducerEnergyMWh = [], ConsumerEnergyMWh = [], StorageInputEnergyMWh = [];

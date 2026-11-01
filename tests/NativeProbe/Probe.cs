@@ -43,6 +43,7 @@ public sealed partial class Probe : IPlugin
         if (MySession.Static?.Ready != true || root == null) return;
         try
         {
+            ObserveClockReference();
             var command = Path.Combine(root, "command.json");
             if (!File.Exists(command)) return;
             string raw = File.ReadAllText(command);
@@ -72,6 +73,8 @@ public sealed partial class Probe : IPlugin
                 }
                 return Inspect();
             case "fixtures": return Fixtures();
+            case "recovery-fixtures": return RecoveryFixtures();
+            case "clock-reference": return BeginClockReference(r);
             case "environment": return EnvironmentFixtures();
             case "detached-commit": return DetachedCommitChecks();
             case "shift":
@@ -130,6 +133,8 @@ public sealed partial class Probe : IPlugin
             world = MySession.Static.WorldId, path = MySession.Static.CurrentPath, userData = MyFileSystem.UserDataPath,
             quarantinedCount = (accounting?.GetType().GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary)?.Count,
             censusCount = censuses?.Count, claims = records?.Values.Cast<object>().Distinct().Select(v => JsonSerializer.SerializeToElement(v, Json)).ToArray(),
+            claimRows = records?.Cast<System.Collections.DictionaryEntry>().Select(p => new { id = p.Key, claim = JsonSerializer.SerializeToElement(p.Value, Json) }).ToArray(),
+            opaqueRows = (accounting?.GetType().GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary)?.Cast<System.Collections.DictionaryEntry>().Select(p => new { id = p.Key, evidence = p.Value }).ToArray(),
             coreAssembly = engine.Assembly.FullName, coreModule = engine.Assembly.ManifestModule.ModuleVersionId,
             coreCopies = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.GetType("Concealment.Accounting.AccountingApi", false) != null),
             oldGrantController = PluginType.Assembly.GetType("Shared.Concealment.ProductionBoostManager", false) != null,
@@ -156,7 +161,7 @@ public sealed partial class Probe : IPlugin
         var api = PluginType.Assembly.GetType("Concealment.Accounting.AccountingApi");
         var callbacks = new Dictionary<string, object>
         {
-            ["clockFrameSeconds"] = .016,
+            ["clockFrameSeconds"] = 1.0 / 60,
             ["clock"] = (Func<double>)(() => MySession.Static.ElapsedGameTime.TotalMilliseconds),
             ["setting"] = (Func<string,string>)(key => key switch {
                 "offline.compensate" => "true", "offline.compensateMaxHours" => "72",
@@ -200,6 +205,8 @@ public sealed partial class Probe : IPlugin
     private static object State(MyCubeGrid g) => new
     {
         name = g.DisplayName, id = g.EntityId, concealed = ((int)g.Flags & 4) != 0,
+        physicalMembers = MyCubeGridGroups.Static.Physical.GetGroup(g)?.Nodes.Select(n => n.NodeData.EntityId).Order().ToArray(),
+        logicalMembers = MyCubeGridGroups.Static.Logical.GetGroup(g)?.Nodes.Select(n => n.NodeData.EntityId).Order().ToArray(),
         matrix = g.WorldMatrix.ToString(),
         refinery = g.GetFatBlocks<MyRefinery>().Select(b => new { block = b.EntityId, input = (decimal)b.InputInventory.GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ore/Iron")), output = (decimal)b.OutputInventory.GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ingot/Iron")), b.IsProducing }).ToArray(),
         fuel = g.GetFatBlocks<MyReactor>().Select(b => new { block = b.EntityId, uranium = (decimal)b.GetInventory().GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ingot/Uranium")), output = b.SourceComp.CurrentOutput, period = b.m_timer.TimerTickInFrames, phase = b.m_timer.FramesFromLastTrigger }).ToArray(),

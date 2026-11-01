@@ -53,7 +53,7 @@ internal sealed class StandaloneAccounting : IDisposable
             ["clockFrameSeconds"] = 1.0 / 60,
             ["clock"] = (Func<double>)(() => MySession.Static.ElapsedGameTime.TotalMilliseconds),
             ["setting"] = (Func<string, string>)Setting,
-            ["admit"] = (Func<ulong, uint, bool>)((scope, generation) => !disposed && MySession.Static?.Ready == true && (!records.TryGetValue(unchecked((long)scope), out var current) || !current.Concealed)),
+            ["admit"] = (Func<ulong, uint, bool>)((scope, generation) => !disposed && recovered && MySession.Static?.Ready == true && !HasClaim(unchecked((long)scope))),
             ["generation"] = (Func<ulong, uint>)(_ => 1),
             ["observe"] = (Func<bool>)(() => !disposed && MySession.Static?.Ready == true),
             ["frozen"] = (Func<long, bool>)(id => records.TryGetValue(id, out var r) && r.Concealed),
@@ -110,7 +110,7 @@ internal sealed class StandaloneAccounting : IDisposable
             if (record.CheckpointTicks != MySession.Static.ElapsedGameTime.Ticks) throw new InvalidDataException("Accounting stocks and world clock are from different checkpoints");
             if (record.Schema != 1 || record.Root == 0 || !record.Members.Contains(grid.EntityId) || string.IsNullOrEmpty(record.Epoch)) throw new InvalidDataException("Invalid standalone claim schema/membership");
             records[grid.EntityId] = record;
-            if (record.Concealed)
+            if (record.Concealed || record.Rejected != null)
             {
                 restored[grid.EntityId] = (grid, record, (MyObjectBuilder_CubeGrid)builder.Clone());
                 ConcealGroup.SuppressUpdates(grid, null);
@@ -164,7 +164,7 @@ internal sealed class StandaloneAccounting : IDisposable
                 {
                     if (root.Record?.Profiles == null || root.Record.World != AccountingStock.World || root.Record.Profiles.Length == 0
                         || !root.Record.Members.Order().SequenceEqual(group.Select(g => g.Grid.EntityId).Order())
-                        || group.Any(g => g.Record.Epoch != root.Record.Epoch || g.Record.World != root.Record.World || !g.Record.Members.SequenceEqual(root.Record.Members)))
+                        || group.Any(g => g.Record.Rejected != null || g.Record.Epoch != root.Record.Epoch || g.Record.World != root.Record.World || !g.Record.Members.SequenceEqual(root.Record.Members)))
                         throw new InvalidDataException("Incomplete/mismatched standalone checkpoint");
                     var physical = MyCubeGridGroups.Static.Physical.GetGroup(root.Grid) ?? throw new InvalidDataException("Missing physical group");
                     var concealed = new ConcealGroup(physical);
@@ -174,12 +174,44 @@ internal sealed class StandaloneAccounting : IDisposable
                     concealed.RestoreProjectors(root.Record.Projectors);
                     plugin.Manager.RestoreConcealed(concealed);
                 }
-                catch (Exception e) { plugin.Log.Error(e, "Accounting group {0} remains suspended; entitlement preserved", group.Key); }
+                catch (Exception e)
+                {
+                    RejectRecovery(group.ToArray(), e.Message);
+                    plugin.Log.Error(e, "Accounting group {0} remains suspended; entitlement preserved", group.Key);
+                }
             }
             restored.Clear();
         }
         AccountingApi.UpdateObservations();
     }
+    private void RejectRecovery((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group, string reason)
+    {
+        // Keep each surviving row, including conflicting epochs. Uncovered members
+        // carry opaque copies of the evidence, never a reconstructed root profile.
+        string evidence = BlockBuilderEntry.Read(group[0].Builder, AccountingMetadata.AccountingKey);
+        var pending = new Queue<long>(group.SelectMany(g => g.Record.Members.Append(g.Record.Root)).Concat(group.Select(g => g.Grid.EntityId)));
+        var affected = new HashSet<long>();
+        var loaded = new List<MyCubeGrid>();
+        while (pending.TryDequeue(out long id))
+        {
+            if (!affected.Add(id)) continue;
+            if (records.TryGetValue(id, out var record))
+            {
+                record.Rejected ??= reason;
+                foreach (long member in record.Members.Append(record.Root)) pending.Enqueue(member);
+            }
+            else opaque.TryAdd(id, evidence);
+            if (MyEntities.GetEntityById(id) is not MyCubeGrid grid) continue;
+            loaded.Add(grid);
+            var physical = MyCubeGridGroups.Static.Physical.GetGroup(grid);
+            if (physical != null) foreach (var member in physical.Nodes) pending.Enqueue(member.NodeData.EntityId);
+            var logical = MyCubeGridGroups.Static.Logical.GetGroup(grid);
+            if (logical != null) foreach (var member in logical.Nodes) pending.Enqueue(member.NodeData.EntityId);
+            ConcealGroup.SuppressUpdates(grid, null);
+        }
+        plugin.Manager.Dynamic.GuardConcealedUpdates(loaded.Select(g => g.GetType()).Concat(loaded.SelectMany(g => g.GetFatBlocks()).Select(b => b.GetType())));
+    }
+    private bool HasClaim(long id) => opaque.ContainsKey(id) || records.TryGetValue(id, out var record) && (record.Concealed || record.Rejected != null);
     private static MyCubeGrid[][] Groups(ConcealGroup group)
     {
         var remaining = group.Grids.OrderBy(g => g.EntityId).ToDictionary(g => g.EntityId);
@@ -200,6 +232,7 @@ internal sealed class StandaloneAccounting : IDisposable
         || Enabled && plugin.Manager.Production.Blocks(group.Grids);
     internal bool TryBegin(ConcealGroup group, Action beforeFreeze)
     {
+        if (group.Grids.Any(g => HasClaim(g.EntityId))) return false;
         if (!Enabled) { beforeFreeze(); return true; }
         if (!Ready || Blocks(group) || group.Grids.Any(g => AccountingEngine.Readiness(g) != null || g.MarkedForClose || g.IsPreview)) return false;
         ulong scope = unchecked((ulong)group.Grids.Min(g => g.EntityId));
@@ -254,6 +287,7 @@ internal sealed class StandaloneAccounting : IDisposable
     }
     internal bool Settle(ConcealGroup group)
     {
+        if (group.Grids.Any(g => opaque.ContainsKey(g.EntityId) || records.TryGetValue(g.EntityId, out var r) && r.Rejected != null)) return false;
         if (!records.TryGetValue(group.Grids[0].EntityId, out var record) || !record.Concealed) return true; // explicit Pause
         if (record.Rejected != null) return false;
         Dictionary<long, MyObjectBuilder_EntityBase> original = null;

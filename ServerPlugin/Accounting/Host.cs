@@ -11,7 +11,7 @@ namespace Concealment.Accounting;
 internal static class Host
 {
     internal static Func<double> ClockMilliseconds;
-    internal static double ClockFrameSeconds = 0.016;
+    internal static double ClockFrameSeconds = 1.0 / 60;
     internal static Func<string, string> Setting;
     internal static Func<ulong, uint, bool> CanProfile;
     internal static Func<ulong, uint> Generation;

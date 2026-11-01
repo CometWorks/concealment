@@ -113,6 +113,26 @@ static class Program
             Check(runtime.Manager == null && failing.Disposed && Log.Failures >= 2, "failure cleans up safely even when reveal and dispose fail");
             Check(!Harmony.GetPatchInfo(target).Owners.Contains(owner), "failure still removes our patches");
             MySession.Unload();
+            MySession.Static = World("/world/retained-error");
+            runtime.Update();
+            var retained = runtime.Manager;
+            retained.RequiresWorldRetention = true;
+            retained.ThrowOnUpdate = true;
+            retained.ThrowOnReveal = true;
+            int updates = retained.Updates;
+            runtime.Update();
+            runtime.Update();
+            Check(runtime.Manager == retained && retained.Stopped && !retained.Disposed && retained.Updates == updates + 1,
+                "same-world failure stops scheduling while retaining the state owner");
+            Check(ConcealmentRuntime.StandaloneOwner && !ConcealmentRuntime.StandaloneActive && !runtime.IsAuthoritative,
+                "failed world retains persistence/guards but no autonomous work or command authority");
+            Check(ConcealmentCommands.Execute(runtime, "!conceal on", null).Contains("only"), "failure cannot be restarted by a command");
+            Check(Harmony.GetPatchInfo(target).Owners.Contains(owner), "failure retains world protection patches");
+            MySession.Unload();
+            Check(retained.Disposed && runtime.Manager == null && !ConcealmentRuntime.StandaloneOwner,
+                "world unload releases the retained failure owner");
+            Check(!Harmony.GetPatchInfo(target).Owners.Contains(owner) && Harmony.GetPatchInfo(target).Owners.Contains(other.Id),
+                "retained-world cleanup preserves foreign patches");
             MySession.Static = World("/world/recovered");
             runtime.Update();
             Check(runtime.Manager != null, "failure in one world does not disable later worlds");
@@ -130,6 +150,29 @@ static class Program
             dedicated.Update();
             Check(dedicated.Manager != null && dedicated.DataDirectory == "/legacy/server-data", "Magnetar preserves its existing production bank location");
         }
+        MySession.Unload();
+        MySession.Static = World("/world/disposal");
+        var disposal = new ConcealmentRuntime(config, Log, owner);
+        disposal.Update();
+        var held = disposal.Manager;
+        held.RequiresWorldRetention = true;
+        disposal.Dispose();
+        disposal.Dispose();
+        disposal.Update();
+        Check(disposal.Manager == held && held.Stopped && !held.Disposed && ConcealmentRuntime.Instance == disposal,
+            "explicit plugin disposal retains saved state while the same world is loaded");
+        Check(ConcealmentRuntime.StandaloneOwner && !ConcealmentRuntime.StandaloneActive && !disposal.IsAuthoritative,
+            "disposed plugin retains only world persistence/protection");
+        try { _ = new ConcealmentRuntime(config, Log, "replacement"); throw new Exception("replaced a retained owner"); }
+        catch (InvalidOperationException) { Check(ConcealmentRuntime.Instance == disposal, "same-world replacement cannot erase the retained owner"); }
+        MySession.Loading();
+        Check(disposal.Manager == held, "disposed plugin cannot create another manager");
+        MySession.Unload();
+        Check(held.Disposed && disposal.Manager == null && ConcealmentRuntime.Instance == null,
+            "unload releases disposed plugin and static callback owner");
+        MySession.Static = World("/world/after-disposal");
+        MySession.Loading();
+        Check(disposal.Manager == null && ConcealmentRuntime.Instance == null, "disposed callbacks cannot attach to the next world");
         MySession.Unload();
         other.Unpatch(target, HarmonyPatchType.All, other.Id);
         Check(!Harmony.HasAnyPatches(owner), "no leaked patches after disposal");

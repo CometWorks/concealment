@@ -34,8 +34,9 @@ public sealed partial class Probe : IPlugin
     private static Type PluginType => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("ServerPlugin.Plugin", false))
         .Single(t => t?.GetField("Name")?.GetRawConstantValue() as string == "Concealment");
     private static object Plugin => PluginType.GetProperty("Instance").GetValue(null);
-    private static object Manager => Plugin?.GetType().GetProperty("Manager").GetValue(Plugin);
-    private static object Config => Plugin?.GetType().GetProperty("ConfigData").GetValue(Plugin);
+    private static object Runtime => PluginType.Assembly.GetType("Shared.Concealment.ConcealmentRuntime").GetProperty("Instance").GetValue(null);
+    private static object Manager => Runtime?.GetType().GetProperty("Manager").GetValue(Runtime);
+    private static object Config => Runtime?.GetType().GetProperty("ConfigData").GetValue(Runtime) ?? Plugin?.GetType().GetProperty("ConfigData").GetValue(Plugin);
     public void Init(object gameInstance)
     {
         root = Environment.GetEnvironmentVariable("EXTRACTION_PROBE_ROOT"); Directory.CreateDirectory(root);
@@ -85,6 +86,12 @@ public sealed partial class Probe : IPlugin
                 return Inspect();
             case "fixtures": return Fixtures();
             case "recovery-fixtures": return RecoveryFixtures();
+            case "manager-failure": return ArmManagerFailure();
+            case "admission": return RecoveryAdmission(r.GetProperty("name").GetString());
+            case "world-unload":
+                MySession.Static.Unload();
+                return new { runtime = Runtime != null, manager = Manager != null,
+                    patches = Harmony.GetAllPatchedMethods().Where(m => Harmony.GetPatchInfo(m).Owners.Contains("Concealment.Server")).Select(m => m.ToString()).ToArray() };
             case "clock-reference": return BeginClockReference(r);
             case "clock-model": return ClockModel(r);
             case "clock-content-ready": return new { ready = (bool)PluginType.Assembly.GetType("Concealment.Accounting.AccountingApi").GetMethod("ContentReady").Invoke(null, null) };
@@ -144,7 +151,11 @@ public sealed partial class Probe : IPlugin
         return new
         {
             clusterMode = PluginType.GetProperty("ClusterMode").GetValue(null), manager = Manager != null,
-            tick = Plugin?.GetType().GetProperty("Tick").GetValue(Plugin), config = Config,
+            tick = Runtime?.GetType().GetProperty("Tick").GetValue(Runtime), config = Config,
+            runtime = Runtime != null,
+            failed = Runtime?.GetType().GetField("failed", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Runtime),
+            disposed = Runtime?.GetType().GetField("disposed", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Runtime),
+            scheduling = PluginType.Assembly.GetType("Shared.Concealment.ConcealmentRuntime").GetProperty("StandaloneActive", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null),
             world = MySession.Static.WorldId, path = MySession.Static.CurrentPath, userData = MyFileSystem.UserDataPath,
             quarantinedCount = (accounting?.GetType().GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary)?.Count,
             censusCount = censuses?.Count, claims = records?.Values.Cast<object>().Distinct().Select(v => JsonSerializer.SerializeToElement(v, Json)).ToArray(),

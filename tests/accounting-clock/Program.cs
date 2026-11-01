@@ -33,3 +33,5 @@ var invalid=Basis();invalid.ClockFrameSeconds=.016;Refuses(invalid,"schema2 cann
 invalid=Basis();invalid.Schema=1;invalid.ClockFrameSeconds=.02;Refuses(invalid,"unknown legacy clock refused");
 invalid=Basis();invalid.Schema=3;Refuses(invalid,"future schema refused");
 Console.WriteLine($"PASS {checks} production-DLL native-world-clock/migration/cap/immutable-retry assertions");
+
+JsonBoundary.Run();

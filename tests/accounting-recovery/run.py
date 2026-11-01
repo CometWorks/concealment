@@ -16,9 +16,10 @@ def section(start):
         i += 1
     return s[a:i]
 parts = [section(x) for x in ('private sealed class Record', 'private void Restore(', 'private void Save(',
-    'internal void Update()', 'private void RejectRecovery(', 'private static MyCubeGrid[][] Groups', 'internal bool TryBegin(')]
+    'internal void Update()', 'internal void Stop()', 'public void Dispose()', 'private void RejectRecovery(', 'private static MyCubeGrid[][] Groups', 'internal bool TryBegin(')]
 parts += [s[s.index('private bool HasClaim('):s.index('private static MyCubeGrid[][] Groups')].strip(),
-          s[s.index('internal bool Blocks('):s.index('internal bool TryBegin(')].strip()]
+          s[s.index('internal bool Blocks('):s.index('internal bool TryBegin(')].strip(),
+          s[s.index('private static StandaloneAccounting Current =>'):s.index('private static void MeasureRefinery')].replace('StandaloneAccounting', 'Subject').strip()]
 admit = next(line.strip().removesuffix(',').split(' = ', 1)[1] for line in s.splitlines() if '["admit"] =' in line)
 out = Path(sys.argv[1]).resolve(); out.mkdir(parents=True, exist_ok=False)
 (out / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><LangVersion>14</LangVersion><NoWarn>CS0649</NoWarn></PropertyGroup></Project>')

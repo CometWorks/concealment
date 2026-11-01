@@ -18,6 +18,31 @@ namespace ExtractionProbe;
 
 public sealed partial class Probe
 {
+    private static object RecoveryAdmission(string name)
+    {
+        var grid = Named(name);
+        object accounting = Manager.GetType().GetProperty("Accounting", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Manager);
+        var group = Activator.CreateInstance(PluginType.Assembly.GetType("Shared.Concealment.ConcealGroup"), MyCubeGridGroups.Static.Physical.GetGroup(grid));
+        bool admitted = (bool)accounting.GetType().GetMethod("TryBegin", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(accounting,
+            new object[] { group, (Action)(() => throw new InvalidOperationException("Rejected group reached native freeze")) });
+        return new { admitted, state = Inspect() };
+    }
+    private static bool failManagerOnce;
+    private static object ArmManagerFailure()
+    {
+        if (Manager == null) throw new InvalidOperationException("No real manager to fail");
+        var method = Manager.GetType().GetMethod("Update");
+        new HarmonyLib.Harmony("ExtractionProbe.controlled-manager-error").Patch(method,
+            prefix: new HarmonyLib.HarmonyMethod(typeof(Probe).GetMethod(nameof(FailManagerUpdate), BindingFlags.NonPublic | BindingFlags.Static)));
+        failManagerOnce = true;
+        return new { armed = true, target = method.ToString() };
+    }
+    private static void FailManagerUpdate()
+    {
+        if (!failManagerOnce) return;
+        failManagerOnce = false;
+        throw new InvalidOperationException("Controlled test-only manager update error");
+    }
     private static object OpaqueRows(object accounting)
     {
         var values = accounting?.GetType().GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary;

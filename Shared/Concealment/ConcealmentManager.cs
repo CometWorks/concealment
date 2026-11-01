@@ -58,7 +58,7 @@ public sealed class ConcealmentManager : IDisposable
     private bool ready;
     private bool configChanged;
     private long readyTick;
-    private bool disposed;
+    private bool disposed, stopped;
     private bool enabledLastTick;
 
     public List<ConcealGroup> ConcealedGroups { get; } = new List<ConcealGroup>();
@@ -71,6 +71,13 @@ public sealed class ConcealmentManager : IDisposable
 
 #else
     public ProductionBoostManager Production { get; }
+#endif
+
+    internal bool RequiresWorldRetention =>
+#if MAGNETAR
+        Accounting.HasSavedState || Production.HasSavedState;
+#else
+        false;
 #endif
 
     private PluginConfig Config => plugin.ConfigData;
@@ -131,7 +138,7 @@ public sealed class ConcealmentManager : IDisposable
 
     public void Update()
     {
-        if (MyAPIGateway.Session == null)
+        if (stopped || MyAPIGateway.Session == null)
             return;
 
         InitializeSessionFeatures();
@@ -168,6 +175,7 @@ public sealed class ConcealmentManager : IDisposable
 
     public int ConcealGrids(double distanceFromPlayers = 0)
     {
+        if (stopped) return 0;
         // An explicit scan is allowed while periodic concealment is disabled.
         enabledLastTick = Config.Enabled;
         log.Debug("Concealing grids");
@@ -222,6 +230,7 @@ public sealed class ConcealmentManager : IDisposable
 
     public int RevealGrids(double distanceFromPlayers)
     {
+        if (stopped) return 0;
         var componentUpdater = MySession.Static?.GetComponent<MyEntityComponentUpdater>();
         var revealed = 0;
 
@@ -247,6 +256,7 @@ public sealed class ConcealmentManager : IDisposable
 
     public int RevealGridsInSphere(BoundingSphereD sphere)
     {
+        if (stopped) return 0;
         UpdateMovedGroups();
         return RevealGridsInSphere(
             sphere,
@@ -274,6 +284,7 @@ public sealed class ConcealmentManager : IDisposable
 
     public int RevealAll()
     {
+        if (stopped) return 0;
         log.Debug("Revealing all grids");
 
         var componentUpdater = MySession.Static?.GetComponent<MyEntityComponentUpdater>();
@@ -370,34 +381,39 @@ public sealed class ConcealmentManager : IDisposable
         return exclude;
     }
 
-    public void Dispose()
+    internal void StopScheduling()
     {
-        if (disposed)
-            return;
-
-        disposed = true;
+        if (stopped) return;
+        stopped = true;
         Config.PropertyChanged -= ConfigOnPropertyChanged;
-        Dynamic.Dispose();
-
+#if MAGNETAR
+        pendingConceals.Clear();
+        Accounting.Stop();
+#endif
         if (session != null && onSavingCheckpoint != null)
             typeof(MySession).GetEvent("OnSavingCheckpoint").RemoveEventHandler(session, onSavingCheckpoint);
-
-#if MAGNETAR
-        Accounting.Dispose();
-#endif
-        Production.Dispose();
-
         if (multiplayer != null)
             typeof(MyMultiplayerBase).GetEvent("ClientJoined").RemoveEventHandler(multiplayer, (Action<ulong, string>)RevealCryoPod);
-
+        foreach (var group in ConcealedGroups) group.Closing -= GroupOnClosing;
         lock (keepAliveTimers)
         {
-            foreach (var timer in keepAliveTimers.Values)
-                timer.Dispose();
+            foreach (var timer in keepAliveTimers.Values) timer.Dispose();
             keepAliveTimers.Clear();
         }
         if (keepAliveAction != null && MyAPIGateway.TerminalControls != null)
             MyAPIGateway.TerminalControls.RemoveAction<IMyRemoteControl>(keepAliveAction);
+    }
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        StopScheduling();
+        Dynamic.Dispose();
+#if MAGNETAR
+        Accounting.Dispose();
+#endif
+        Production.Dispose();
     }
 
     private void InitializeSessionFeatures()
@@ -446,6 +462,7 @@ public sealed class ConcealmentManager : IDisposable
         System.ComponentModel.PropertyChangedEventArgs e
     )
     {
+        if (stopped) return;
         configChanged = true;
 #if MAGNETAR
         if (e.PropertyName == nameof(PluginConfig.Enabled) && !Config.Enabled) pendingConceals.Clear();
@@ -499,6 +516,7 @@ public sealed class ConcealmentManager : IDisposable
 
     private void GroupOnClosing(ConcealGroup group)
     {
+        if (stopped) return;
         RevealGroup(group);
     }
 
@@ -567,6 +585,7 @@ public sealed class ConcealmentManager : IDisposable
 
     private void RevealCryoPod(ulong steamId, string username)
     {
+        if (stopped) return;
         try
         {
             var componentUpdater = MySession.Static?.GetComponent<MyEntityComponentUpdater>();
@@ -589,6 +608,7 @@ public sealed class ConcealmentManager : IDisposable
 
     private void KeepAlive(IMyTerminalBlock block)
     {
+        if (stopped) return;
         if (block?.CubeGrid == null || block.CubeGrid.IsStatic)
             return;
 

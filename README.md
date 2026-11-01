@@ -151,6 +151,19 @@ Uncovered members of the loaded physical/logical closure retain opaque copies of
 the surviving evidence. No missing root profile or stock baseline is invented.
 These groups stay suspended and refuse admission, capture and reveal through
 subsequent scans and world saves/reloads; unaffected groups proceed independently.
+An update failure stops scheduling, profiling and commands. Complete groups settle
+before stopping; unpaid/rejected/opaque claims and legacy receipts keep their
+world-owned builder serializers and update guards through later ordinary saves.
+Disposing the plugin while that world is loaded has the same retention rule.
+The native world unload event releases the retained owner, hooks and callbacks;
+unload that world before replacing its runtime. No unregistered ModStorage key
+is used as a substitute for native builder serialization.
+
+Persisted profiles must explicitly include both `Schema` and `ClockFrameSeconds`,
+including inside standalone records. Missing discriminators are malformed input,
+not evidence for current defaults or a supported legacy clock. Cluster refuses
+that input before recovery instantiates entities; standalone retains it opaque
+and suspended. New programmatic profiles retain their construction defaults.
 
 ## Grid Backups
 
@@ -198,11 +211,11 @@ patches, command validation, and config persistence. They do not launch the game
 Targeted accounting checks (build the server plugin first):
 
 ```sh
-dotnet run --project tests/accounting-clock/ClockChecks.csproj -c Release
+DEDICATED64=/path/to/DedicatedServer64 dotnet run --project tests/accounting-clock/ClockChecks.csproj -c Release
 python3 tests/accounting-recovery/run.py /absolute/path/to/new/probe-output
 ```
 
-The clock check consumes the built production DLL. The recovery check extracts
+The clock/JSON-boundary check consumes the built production DLL and native DS references. The recovery check extracts
 the exact production recovery/save/admission methods and uses inert native
 collaborators; it is not a native game proof. `tests/NativeProbe` separately
 supports genuine incomplete-root rotor-group reloads and raw-clock live-stock

@@ -4,9 +4,10 @@ partial class Subject {
  readonly ConcurrentDictionary<long,Record> records=new();
  readonly ConcurrentDictionary<long,string> opaque=new();
  readonly ConcurrentDictionary<long,(MyCubeGrid Grid,Record Record,MyObjectBuilder_CubeGrid Builder)> restored=new();
- Plugin plugin=new(); bool disposed,recovered,applying,ownSnapshot; long nextCaptureWarning; long Frame=10000;
+ Plugin plugin=new(); bool disposed,stopped,recovered,applying,ownSnapshot; long nextCaptureWarning; long Frame=10000;
  string CachePath="/nonexistent/accounting-recovery-cache";
  bool Enabled=true; bool Ready=>recovered&&plugin.Manager.Production.Ready;
+ readonly Harmony harmony=new(); readonly List<(int Target,int Patch)> patches=[(1,2)];
  static int checks;
  static void Check(bool value,string label){if(!value)throw new Exception(label); checks++;}
  static MyCubeGrid[] Grids(params long[] ids){var gs=ids.Select(id=>new MyCubeGrid{EntityId=id}).ToArray();foreach(var g in gs)MyEntities.Grids[g.EntityId]=g;MyCubeGridGroups.Static.Physical.Add(gs);MyCubeGridGroups.Static.Logical.Add(gs);return gs;}
@@ -47,6 +48,31 @@ partial class Subject {
    Check(subject.TryBegin(Group(unaffected),()=>{}),scenario+" unaffected group independently admitted");
    Check(!subject.TryBegin(Group(unaffected),()=>{}),scenario+" outstanding complete claim cannot be replaced either");
   }
+  Lifetime();
   Console.WriteLine($"PASS {checks} exact-production recovery/admission/save/reload assertions; inert native collaborators");
  }
+ void Lifetime(){
+  MyEntities.Grids.Clear();MyCubeGridGroups.Static=new();
+  var grids=Grids(10,11);var subject=new Subject();
+  subject.plugin.Manager.Accounting=subject;ConcealmentRuntime.Instance.Manager=subject.plugin.Manager;
+  var unpaid=subject.Row(10,[10,11],"lifetime-unpaid");
+  grids[1].Storage.Raw=Raw(unpaid);subject.Restore(grids[1],new(){Raw=grids[1].Storage.Raw});subject.Update();
+  Check(grids[1].Storage.Raw==null,"Restore moves live metadata into the world owner");
+  string rejection=subject.records[11].Rejected;string evidence=subject.opaque[10];
+  subject.Stop();subject.Stop();
+  Check(subject.stopped&&!subject.disposed&&subject.harmony.Unpatches==0,"stop cancels jobs without unpatching serializer");
+  Check(!subject.Admission(10,1)&&!subject.TryBegin(Group(grids),()=>{}),"stopped owner cannot admit another interval");
+  for(int save=0;save<2;save++){
+   MySession.Static.ElapsedGameTime+=TimeSpan.FromTicks(160000);
+   var saved=grids.Select(g=>{var b=new MyObjectBuilder_CubeGrid();Saving(g,b);Check(b.Raw!=null,"same-world postfix still serializes every claim");return b;}).ToArray();
+   Check(saved[0].Raw==evidence,"opaque evidence stays exact through later saves");
+   var next=new Subject();for(int i=0;i<grids.Length;i++)next.Restore(grids[i],saved[i]);next.Update();
+   Check(next.records[11].Epoch==unpaid.Epoch&&next.records[11].Rejected==rejection,"same unpaid epoch/rejection survives stopped save/reload");
+   Check(next.Blocks(Group(grids))&&!next.TryBegin(Group(grids),()=>{}),"restart refuses new capture");
+  }
+  subject.Dispose();subject.Dispose();ConcealmentRuntime.Instance.Manager=null;
+  Check(subject.disposed&&subject.harmony.Unpatches==1,"true detach removes serializer exactly once");
+  var detached=new MyObjectBuilder_CubeGrid();Saving(grids[1],detached);Check(detached.Raw==null,"detached callback cannot write to another world");
+ }
+
 }

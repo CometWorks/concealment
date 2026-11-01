@@ -36,7 +36,8 @@ internal sealed class StandaloneAccounting : IDisposable
     private readonly ConcurrentDictionary<long, Record> records = new();
     private readonly ConcurrentDictionary<long, string> opaque = new();
     private readonly ConcurrentDictionary<long, (MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)> restored = new();
-    private bool recovered, disposed, applying, ownSnapshot;
+    private bool recovered, disposed, stopped, applying, ownSnapshot;
+    internal bool HasSavedState => !records.IsEmpty || !opaque.IsEmpty;
     private long nextCaptureWarning;
     private readonly Harmony harmony;
     private readonly List<(System.Reflection.MethodInfo Target, System.Reflection.MethodInfo Patch)> patches = new();
@@ -53,11 +54,11 @@ internal sealed class StandaloneAccounting : IDisposable
             ["clockFrameSeconds"] = 1.0 / 60,
             ["clock"] = (Func<double>)(() => MySession.Static.ElapsedGameTime.TotalMilliseconds),
             ["setting"] = (Func<string, string>)Setting,
-            ["admit"] = (Func<ulong, uint, bool>)((scope, generation) => !disposed && recovered && MySession.Static?.Ready == true && !HasClaim(unchecked((long)scope))),
+            ["admit"] = (Func<ulong, uint, bool>)((scope, generation) => !disposed && !stopped && recovered && MySession.Static?.Ready == true && !HasClaim(unchecked((long)scope))),
             ["generation"] = (Func<ulong, uint>)(_ => 1),
-            ["observe"] = (Func<bool>)(() => !disposed && MySession.Static?.Ready == true),
+            ["observe"] = (Func<bool>)(() => !disposed && !stopped && MySession.Static?.Ready == true),
             ["frozen"] = (Func<long, bool>)(id => records.TryGetValue(id, out var r) && r.Concealed),
-            ["measure"] = (Func<MyCubeGrid[], bool>)(grids => !disposed && grids.All(g => !g.MarkedForClose && (!records.TryGetValue(g.EntityId, out var r) || !r.Concealed))),
+            ["measure"] = (Func<MyCubeGrid[], bool>)(grids => !disposed && !stopped && grids.All(g => !g.MarkedForClose && (!records.TryGetValue(g.EntityId, out var r) || !r.Concealed))),
             ["zonePending"] = (Func<MySafeZoneBlock, bool>)(_ => false),
         });
         Patch(AccessTools.Method(typeof(MySession), nameof(MySession.GetSector), new[] { typeof(bool) }), nameof(SnapshotAllowed), true);
@@ -89,14 +90,14 @@ internal sealed class StandaloneAccounting : IDisposable
         _ => throw new ArgumentException("Unknown accounting setting " + key),
     };
     private static void SnapshotAllowed() { if (Current?.applying == true) throw new InvalidOperationException("Accounting transaction is committing; retry the world snapshot after this frame"); }
-    private static StandaloneAccounting Current => ConcealmentRuntime.StandaloneActive ? ConcealmentRuntime.Instance.Manager.Accounting : null;
+    private static StandaloneAccounting Current => ConcealmentRuntime.StandaloneOwner ? ConcealmentRuntime.Instance.Manager.Accounting : null;
     private static void Initialized(MyCubeGrid __instance, MyObjectBuilder_EntityBase objectBuilder) => Current?.Restore(__instance, (MyObjectBuilder_CubeGrid)objectBuilder);
     private static void Saving(MyCubeGrid __instance, MyObjectBuilder_EntityBase __result) => Current?.Save(__instance, (MyObjectBuilder_CubeGrid)__result);
-    private static void MeasureRefinery(MyRefinery __instance, uint framesFromLastTrigger, out object __state) => __state = Current == null ? null : AccountingApi.BeginMeasurement(__instance, framesFromLastTrigger);
-    private static void MeasureAssembler(MyAssembler __instance, uint framesFromLastTrigger, bool forceUpdate, out object __state) => __state = Current == null || forceUpdate ? null : AccountingApi.BeginMeasurement(__instance, framesFromLastTrigger);
-    private static void Measured(object __state, Exception __exception) { if (Current != null) AccountingApi.FinishMeasurement(__state, __exception == null); }
-    private static void ObserveFuel(MyReactor __instance, float timeDeltaMilliseconds, out Action __state) => __state = Current == null ? null : AccountingApi.ObserveReactorFuel(__instance, timeDeltaMilliseconds);
-    private static void FuelObserved(Action __state, Exception __exception) { if (Current != null && __exception == null) __state?.Invoke(); }
+    private static void MeasureRefinery(MyRefinery __instance, uint framesFromLastTrigger, out object __state) => __state = !ConcealmentRuntime.StandaloneActive ? null : AccountingApi.BeginMeasurement(__instance, framesFromLastTrigger);
+    private static void MeasureAssembler(MyAssembler __instance, uint framesFromLastTrigger, bool forceUpdate, out object __state) => __state = !ConcealmentRuntime.StandaloneActive || forceUpdate ? null : AccountingApi.BeginMeasurement(__instance, framesFromLastTrigger);
+    private static void Measured(object __state, Exception __exception) { if (ConcealmentRuntime.StandaloneActive) AccountingApi.FinishMeasurement(__state, __exception == null); }
+    private static void ObserveFuel(MyReactor __instance, float timeDeltaMilliseconds, out Action __state) => __state = !ConcealmentRuntime.StandaloneActive ? null : AccountingApi.ObserveReactorFuel(__instance, timeDeltaMilliseconds);
+    private static void FuelObserved(Action __state, Exception __exception) { if (ConcealmentRuntime.StandaloneActive && __exception == null) __state?.Invoke(); }
 
     private void Restore(MyCubeGrid grid, MyObjectBuilder_CubeGrid builder)
     {
@@ -147,7 +148,7 @@ internal sealed class StandaloneAccounting : IDisposable
     }
     internal void Update()
     {
-        if (disposed || MySession.Static?.Ready != true) return;
+        if (disposed || stopped || MySession.Static?.Ready != true) return;
         if (!recovered)
         {
             recovered = true;
@@ -232,7 +233,7 @@ internal sealed class StandaloneAccounting : IDisposable
         || Enabled && plugin.Manager.Production.Blocks(group.Grids);
     internal bool TryBegin(ConcealGroup group, Action beforeFreeze)
     {
-        if (group.Grids.Any(g => HasClaim(g.EntityId))) return false;
+        if (stopped || group.Grids.Any(g => HasClaim(g.EntityId))) return false;
         if (!Enabled) { beforeFreeze(); return true; }
         if (!Ready || Blocks(group) || group.Grids.Any(g => AccountingEngine.Readiness(g) != null || g.MarkedForClose || g.IsPreview)) return false;
         ulong scope = unchecked((ulong)group.Grids.Min(g => g.EntityId));
@@ -340,7 +341,7 @@ internal sealed class StandaloneAccounting : IDisposable
     private string CachePath => Path.Combine(VRage.FileSystem.MyFileSystem.UserDataPath, "ConcealmentRates." + AccountingStock.Hash(System.Text.Encoding.UTF8.GetBytes(AccountingStock.World)) + ".json");
     internal void SaveCache()
     {
-        if (disposed || MySession.Static == null) return;
+        if (disposed || stopped || MySession.Static == null) return;
         try
         {
             string value = AccountingApi.CacheSnapshot();
@@ -351,10 +352,18 @@ internal sealed class StandaloneAccounting : IDisposable
         catch (Exception e) { plugin.Log.Warning(e, "Rate cache save failed; stocks and claims remain in native world builders"); }
     }
 
+    internal void Stop()
+    {
+        if (stopped) return;
+        stopped = true;
+        AccountingApi.EndStandaloneSession();
+    }
+
     public void Dispose()
     {
+        if (disposed) return;
         disposed = true;
-        AccountingApi.EndStandaloneSession();
+        Stop();
         foreach (var method in patches.Distinct()) harmony.Unpatch(method.Target, method.Patch);
     }
 }

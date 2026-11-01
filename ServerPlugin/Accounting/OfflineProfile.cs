@@ -2,6 +2,7 @@
 // See ServerPlugin/Accounting/LICENSE and NOTICE for the retained permission notice.
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Concealment.Accounting;
 
@@ -11,7 +12,7 @@ internal sealed class OfflineProfile
 {
 	public const int CurrentSchema = 2;
 	public static readonly JsonSerializerOptions Json = new() { IncludeFields = true };
-	public int Schema = CurrentSchema;
+	[JsonRequired] public int Schema = CurrentSchema;
 	public long Group;
 	public long[] Members = [];
 	public string ContentHash;
@@ -19,7 +20,7 @@ internal sealed class OfflineProfile
 	public long FrozenFrame, SimulatedThrough;
 	// Both hosts use floor(world milliseconds / 16): one unit is one native
 	// frame. Resource rates use 60 Hz seconds, independently of elapsed sun time.
-	public double ClockFrameSeconds = 1.0 / 60;
+	[JsonRequired] public double ClockFrameSeconds = 1.0 / 60;
 	public double SunFrame, SunPeriodFrames;
 	public double ResourceFrameRemaining = 1;
 	public bool Creative, Simplified;

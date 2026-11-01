@@ -361,8 +361,9 @@ public sealed class DynamicConcealmentManager : IDisposable
 
     private static bool PrefixUpdate(MyEntity __instance)
     {
-        if (!ConcealmentRuntime.StandaloneActive) return true;
+        if (!ConcealmentRuntime.StandaloneOwner) return true;
         if ((__instance.Flags & ConcealGroup.ConcealedFlag) != 0) return false;
+        if (!ConcealmentRuntime.StandaloneActive) return true;
 #if MAGNETAR
         if (ConcealmentRuntime.Instance.ConfigData.ProductionConcealment == ProductionConcealmentMode.Approximate)
             return true;

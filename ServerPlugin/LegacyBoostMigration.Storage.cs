@@ -42,6 +42,7 @@ public sealed partial class LegacyBoostMigration
     private bool initialized, failed;
     private long initialCheckpointTicks = -1;
     private Cutover cutover;
+    internal bool HasSavedState => !receipts.IsEmpty || !opaque.IsEmpty;
     internal bool Ready => initialized && !failed;
     internal bool Blocks(IEnumerable<MyCubeGrid> grids) => !Ready || AccountingGroup(grids).Any(g => opaque.ContainsKey(g.EntityId)
         || receipts.TryGetValue(g.EntityId, out var r) && r.Quarantined || BoostBankFrames.GetValueOrDefault(g.EntityId) > 0);

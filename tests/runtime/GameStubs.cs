@@ -62,7 +62,8 @@ namespace Shared.Concealment
     public sealed class ConcealmentManager : IDisposable
     {
         public static int Created;
-        public bool Disposed;
+        public bool Disposed, Stopped;
+        public bool RequiresWorldRetention;
         public int Updates;
         public int Reveals;
         public int Scans;
@@ -92,6 +93,7 @@ namespace Shared.Concealment
         }
         public int ConcealGrids(double distance) { Scans++; Distance = distance; return 2; }
         public int RevealGridsInSphere(VRageMath.BoundingSphereD sphere) { Distance = sphere.Radius; return 1; }
+        public void StopScheduling() { Stopped = true; }
         public void Dispose()
         {
             Disposed = true;

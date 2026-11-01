@@ -13,15 +13,18 @@ namespace Shared.Concealment;
 public sealed class ConcealmentRuntime : IDisposable
 {
     public static bool ClusterMode { get; } = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CLUSTER_GATEWAY_REGISTRY"));
-    internal static bool StandaloneActive => !ClusterMode && Instance is { disposed: false, Manager: not null } runtime
-        && (runtime.serverDataDirectory != null || Sync.IsServer);
+    // Scheduling can stop before the native world unloads. Its claims and update
+    // guards still belong to this runtime until that world is detached.
+    internal static bool StandaloneOwner => !ClusterMode && Instance is { Manager: not null } runtime
+        && runtime.session == MySession.Static && runtime.session != null && Sync.IsServer;
+    internal static bool StandaloneActive => StandaloneOwner && !Instance.disposed && !Instance.failed;
     public static ConcealmentRuntime Instance { get; private set; }
     public PluginConfig ConfigData { get; }
     public IPluginLogger Log { get; }
     public long Tick { get; private set; }
     public ConcealmentManager Manager { get; private set; }
     public string DataDirectory { get; private set; }
-    public bool IsAuthoritative => session != null && session == MySession.Static &&
+    public bool IsAuthoritative => !ClusterMode && !disposed && !failed && session != null && session == MySession.Static &&
         !session.IsUnloading && Sync.IsServer;
 
     private readonly Harmony harmony;
@@ -33,6 +36,8 @@ public sealed class ConcealmentRuntime : IDisposable
     public ConcealmentRuntime(PluginConfig config, IPluginLogger log, string patchId,
         string serverDataDirectory = null)
     {
+        if (Instance?.Manager != null)
+            throw new InvalidOperationException("Concealment still owns a loaded world; unload it before replacing the runtime.");
         ConfigData = config;
         Log = log;
         harmony = new Harmony(patchId);
@@ -50,7 +55,7 @@ public sealed class ConcealmentRuntime : IDisposable
     private void BeginSession()
     {
         var current = MySession.Static;
-        if (disposed || ClusterMode || current == null || current.IsUnloading || !Sync.IsServer) return;
+        if (disposed || failed || ClusterMode || current == null || current.IsUnloading || !Sync.IsServer) return;
         if (session != null && session != current) EndSession();
         session = current;
         DataDirectory = serverDataDirectory ?? current.CurrentPath;
@@ -90,12 +95,29 @@ public sealed class ConcealmentRuntime : IDisposable
             Log.Critical(ex, "Concealment stopped for this session after an update failure");
             try
             {
-                ReleaseManager();
+                StopManager();
             }
             catch (Exception cleanupEx)
             {
                 Log.Error(cleanupEx, "Failed to clean up after the concealment failure");
             }
+        }
+    }
+
+    private void StopManager()
+    {
+        try
+        {
+            if (session == MySession.Static)
+                Manager?.RevealAll();
+        }
+        finally
+        {
+            Manager?.StopScheduling();
+            // A rejected claim may have no ConcealedGroup to reveal. Retain its
+            // builder serializer and native guards across every later world save.
+            if (Manager?.RequiresWorldRetention != true)
+                ReleaseManager();
         }
     }
 
@@ -140,6 +162,7 @@ public sealed class ConcealmentRuntime : IDisposable
             Tick = 0;
             failed = false;
             DataDirectory = null;
+            if (disposed) FinishDispose();
         }
     }
 
@@ -149,8 +172,19 @@ public sealed class ConcealmentRuntime : IDisposable
             return;
         disposed = true;
         typeof(MySession).GetEvent("BeforeLoading").RemoveEventHandler(null, (Action)BeginSession);
+        // Plugin disposal is not necessarily world unload. Keep only world-owned
+        // persistence/protection when the loaded world still has saved state.
+        if (!ClusterMode && session != null && session == MySession.Static && !session.IsUnloading && Sync.IsServer)
+        {
+            try { StopManager(); }
+            finally { if (Manager == null) FinishDispose(); }
+        }
+        else EndSession();
+    }
+
+    private void FinishDispose()
+    {
         typeof(MySession).GetEvent("OnUnloading").RemoveEventHandler(null, (Action)EndSession);
-        EndSession();
-        Instance = null;
+        if (ReferenceEquals(Instance, this)) Instance = null;
     }
 }

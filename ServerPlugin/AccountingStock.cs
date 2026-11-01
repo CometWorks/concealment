@@ -62,11 +62,8 @@ internal static class AccountingStock
     }
     internal static Dictionary<long, MyObjectBuilder_EntityBase> Builders(IEnumerable<MyCubeGrid> grids) => grids.ToDictionary(g => g.EntityId, g => g.GetObjectBuilder());
 
-    internal static double[][] Poses(IEnumerable<MyCubeGrid> grids) => grids.Select(g =>
-    {
-        var m = g.WorldMatrix;
-        return new[] { m.M41, m.M42, m.M43, m.M11, m.M12, m.M13, m.M21, m.M22, m.M23, m.M31, m.M32, m.M33 };
-    }).ToArray();
+    internal static double[] Pose(VRageMath.MatrixD m) => [m.M41, m.M42, m.M43, m.M11, m.M12, m.M13, m.M21, m.M22, m.M23, m.M31, m.M32, m.M33];
+    internal static double[][] Poses(IEnumerable<MyCubeGrid> grids) => grids.Select(g => Pose(g.WorldMatrix)).ToArray();
     internal static bool SamePoses(double[][] before, double[][] after) => before.Length == after.Length
         && before.Zip(after).All(p => p.First.Length == 12 && p.Second.Length == 12
             && p.First.Zip(p.Second).Select((v, i) => double.IsFinite(v.First) && double.IsFinite(v.Second)

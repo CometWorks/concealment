@@ -201,6 +201,7 @@ internal sealed class StandaloneAccounting : IDisposable
     {
         var session = MySession.Static;
         var grids = group.ToDictionary(g => g.Grid.EntityId, g => g.Grid);
+        var claim = group.Single(g => g.Grid.EntityId == g.Record.Root).Record;
         void ValidateOwner()
         {
             if (!ReferenceEquals(Current, this) || session == null || session != MySession.Static || session.IsUnloading
@@ -248,10 +249,32 @@ internal sealed class StandaloneAccounting : IDisposable
                 && (!saved.TryGetValue(attached.ParentEntityId, out var parent) || parent.Block is not MyObjectBuilder_MechanicalConnectionBlock basis || basis.TopBlockId != attached.EntityId))
                 throw new InvalidDataException("Saved mechanical link is not reciprocal");
         }
+        var poses = group.OrderBy(g => g.Grid.EntityId).Select(g => g.Builder.PositionAndOrientation?.GetMatrix()
+            ?? throw new InvalidDataException("Saved mechanical grid pose is missing")).ToArray();
+        if (links.Count > 0)
+        {
+            if (claim.Poses == null || !AccountingStock.SamePoses(claim.Poses, poses.Select(AccountingStock.Pose).ToArray()))
+                throw new InvalidDataException("Saved mechanical checkpoint pose changed");
+            int index = 0;
+            foreach (var grid in grids.Values.OrderBy(g => g.EntityId))
+            {
+                var savedPose = poses[index++];
+                var physics = grid.Physics ?? throw new InvalidDataException("Missing loaded mechanical physics");
+                // Native bodies round the saved double transform through their
+                // cluster-local float matrix before publishing it back to the grid.
+                VRageMath.MatrixD native = physics.GetRigidBodyMatrix(savedPose);
+                native.Translation += physics.Offset;
+                native.Translation -= VRageMath.Vector3D.TransformNormal(physics.Center, ref native);
+                if (!AccountingStock.SamePoses([AccountingStock.Pose(savedPose)], [AccountingStock.Pose(grid.WorldMatrix)])
+                    && !AccountingStock.SamePoses([AccountingStock.Pose(native)], [AccountingStock.Pose(grid.WorldMatrix)]))
+                    throw new InvalidDataException("Loaded mechanical checkpoint pose changed");
+            }
+        }
         // Native BEFORE_NEXT_FRAME also runs unrelated block work. Only complete
         // its saved-ID structural branch; production guards never open.
-        AccountingStock.RestoreLoadedEngines(grids.Values, group.Select(g => g.Builder).ToArray(), group.Single(g => g.Grid.EntityId == g.Record.Root).Record.StockHash);
+        AccountingStock.RestoreLoadedEngines(grids.Values, group.Select(g => g.Builder).ToArray(), claim.StockHash);
         string stocks = AccountingStock.Fingerprint(AccountingStock.Builders(grids.Values).Values.Cast<MyObjectBuilder_CubeGrid>());
+        var loadedPoses = AccountingStock.Poses(grids.Values.OrderBy(g => g.EntityId));
         foreach (var link in links)
         {
             ValidateOwner();
@@ -264,6 +287,21 @@ internal sealed class StandaloneAccounting : IDisposable
         }
         if (AccountingStock.Fingerprint(AccountingStock.Builders(grids.Values).Values.Cast<MyObjectBuilder_CubeGrid>()) != stocks)
             throw new InvalidDataException("Native structural recovery changed accounting stocks");
+        if (links.Count > 0)
+        {
+            if (!AccountingStock.SamePoses(loadedPoses, AccountingStock.Poses(grids.Values.OrderBy(g => g.EntityId))))
+                throw new InvalidDataException("Native mechanical attachment moved the saved group");
+            // Retain the original checkpoint pose, never a replacement claim or
+            // tolerance. Sleeping native bodies avoid attachment solver jitter
+            // while held; an external movement still invalidates settlement.
+            int index = 0;
+            foreach (var grid in grids.Values.OrderBy(g => g.EntityId))
+            {
+                grid.WorldMatrix = poses[index++];
+                grid.Physics.RigidBody.Deactivate();
+                grid.Physics.RigidBody2?.Deactivate();
+            }
+        }
 
         void ValidateLink(MyMechanicalConnectionBlockBase connection, MyAttachableTopBlockBase top)
         {

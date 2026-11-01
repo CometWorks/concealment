@@ -27,6 +27,25 @@ public sealed class ConcealGroup
     internal const EntityFlags ConcealedFlag = (EntityFlags)4;
 
     private readonly HashSet<long> projectors = new HashSet<long>();
+#if MAGNETAR
+    private readonly List<(MyMechanicalConnectionBlockBase Block, Havok.HkConstraint Constraint)> heldConstraints = new();
+
+    internal void HoldMechanicalPhysics()
+    {
+        foreach (var block in Grids.SelectMany(g => g.GetFatBlocks()).OfType<MyMechanicalConnectionBlockBase>())
+            if (block.Constraint?.Enabled == true)
+            {
+                heldConstraints.Add((block, block.Constraint));
+                block.Constraint.Enabled = false;
+            }
+        if (heldConstraints.Count == 0) return;
+        foreach (var grid in Grids)
+        {
+            grid.Physics?.RigidBody?.Deactivate();
+            grid.Physics?.RigidBody2?.Deactivate();
+        }
+    }
+#endif
 
     public long Id { get; }
     public bool IsConcealed { get; private set; }
@@ -138,6 +157,15 @@ public sealed class ConcealGroup
     public void Reveal(MyEntityComponentUpdater componentUpdater)
     {
         if (ConcealmentRuntime.ClusterMode) return;
+#if MAGNETAR
+        foreach (var held in heldConstraints)
+        {
+            if (!ReferenceEquals(held.Block.Constraint, held.Constraint) || held.Constraint.IsDisposed)
+                throw new InvalidOperationException("Held mechanical constraint changed before reveal");
+            held.Constraint.Enabled = true;
+        }
+        heldConstraints.Clear();
+#endif
         foreach (var grid in Grids)
             if (grid.Parent == null)
                 RegisterRecursive(grid);

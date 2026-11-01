@@ -185,6 +185,7 @@ internal sealed class StandaloneAccounting : IDisposable
                 if (logical.Length != root.Record.Profiles.Length || logical.Any(g => !root.Record.Profiles.Any(p => p.Members.Order().SequenceEqual(g.Select(m => m.EntityId).Order()))))
                     throw new InvalidDataException("Saved logical accounting topology changed");
                 AccountingStock.RestoreLoadedEngines(concealed.Grids, group.Select(g => g.Builder).ToArray(), root.Record.StockHash);
+                concealed.HoldMechanicalPhysics();
                 foreach (var member in concealed.Grids) records[member.EntityId] = root.Record;
                 concealed.RestoreProjectors(root.Record.Projectors);
                 plugin.Manager.RestoreConcealed(concealed);

@@ -16,6 +16,11 @@ namespace ExtractionProbe;
 
 public sealed partial class Probe
 {
+    private static object OpaqueRows(object accounting)
+    {
+        var values = accounting?.GetType().GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary;
+        return values?.Keys.Cast<long>().Select(id => new { id, evidence = values[id] }).ToArray();
+    }
     private static object RecoveryFixtures()
     {
         Fixtures();
@@ -37,6 +42,7 @@ public sealed partial class Probe
         public object Initial;
         public long NativeFrame, ElapsedTicks, HostFrame;
         public double HostMilliseconds;
+        public object Native;
     }
     private readonly List<ClockCase> clockCases = new();
     private readonly List<object> clockRows = new();
@@ -50,6 +56,16 @@ public sealed partial class Probe
         return ((Array)Engine.GetMethod("CaptureFor", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
             new object[] { unchecked((ulong)grid.EntityId), new[] { new[] { grid } }, new[] { grid }, true })).GetValue(0);
     }
+    private static object ClockModel(JsonElement request)
+    {
+        var type = PluginType.Assembly.GetType("Concealment.Accounting.OfflineProfile");
+        var profile = JsonSerializer.Deserialize(request.GetProperty("profile").GetRawText(), type, Json);
+        var pair = Engine.GetMethod("ModelForHost", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
+            new object[] { profile, request.GetProperty("wake").GetInt64() });
+        return new { original = JsonSerializer.SerializeToElement(profile, Json),
+            profile = JsonSerializer.SerializeToElement(pair.GetType().GetField("Item1").GetValue(pair), Json),
+            result = JsonSerializer.SerializeToElement(pair.GetType().GetField("Item2").GetValue(pair), Json) };
+    }
     private object BeginClockReference(JsonElement request)
     {
         if (clockCases.Count != 0) throw new InvalidOperationException("Clock reference already active");
@@ -59,7 +75,7 @@ public sealed partial class Probe
             var grid = Named(name.GetString());
             if (((int)grid.Flags & 4) != 0) throw new InvalidOperationException("Reference must advance native live stocks");
             clockCases.Add(new() { Grid = grid, Initial = ReadClockProfile(grid), NativeFrame = MySession.Static.GameplayFrameCounter,
-                ElapsedTicks = MySession.Static.ElapsedGameTime.Ticks, HostMilliseconds = HostMilliseconds, HostFrame = HostFrame });
+                ElapsedTicks = MySession.Static.ElapsedGameTime.Ticks, HostMilliseconds = HostMilliseconds, HostFrame = HostFrame, Native = State(grid) });
         }
         return new { cases = clockCases.Select(c => new { name = c.Grid.DisplayName, initial = JsonSerializer.SerializeToElement(c.Initial, Json),
             c.NativeFrame, c.ElapsedTicks, c.HostMilliseconds, c.HostFrame, native = State(c.Grid) }).ToArray(), state = Inspect() };
@@ -77,7 +93,7 @@ public sealed partial class Probe
                 throw new InvalidOperationException("Actual host/native elapsed clock disagreement");
             var pair = Engine.GetMethod("ModelForHost", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { c.Initial, wake });
             clockRows.Add(new { name = c.Grid.DisplayName, nativeFrames, elapsedTicks, hostUnits = wake - c.HostFrame,
-                initial = JsonSerializer.SerializeToElement(c.Initial, Json), actual = JsonSerializer.SerializeToElement(ReadClockProfile(c.Grid), Json),
+                initial = JsonSerializer.SerializeToElement(c.Initial, Json), initialNative = c.Native, actual = JsonSerializer.SerializeToElement(ReadClockProfile(c.Grid), Json),
                 modeled = JsonSerializer.SerializeToElement(pair.GetType().GetField("Item1").GetValue(pair), Json),
                 result = JsonSerializer.SerializeToElement(pair.GetType().GetField("Item2").GetValue(pair), Json), native = State(c.Grid) });
         }

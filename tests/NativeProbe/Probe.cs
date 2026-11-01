@@ -75,6 +75,7 @@ public sealed partial class Probe : IPlugin
             case "fixtures": return Fixtures();
             case "recovery-fixtures": return RecoveryFixtures();
             case "clock-reference": return BeginClockReference(r);
+            case "clock-model": return ClockModel(r);
             case "environment": return EnvironmentFixtures();
             case "detached-commit": return DetachedCommitChecks();
             case "shift":
@@ -133,8 +134,8 @@ public sealed partial class Probe : IPlugin
             world = MySession.Static.WorldId, path = MySession.Static.CurrentPath, userData = MyFileSystem.UserDataPath,
             quarantinedCount = (accounting?.GetType().GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary)?.Count,
             censusCount = censuses?.Count, claims = records?.Values.Cast<object>().Distinct().Select(v => JsonSerializer.SerializeToElement(v, Json)).ToArray(),
-            claimRows = records?.Cast<System.Collections.DictionaryEntry>().Select(p => new { id = p.Key, claim = JsonSerializer.SerializeToElement(p.Value, Json) }).ToArray(),
-            opaqueRows = (accounting?.GetType().GetField("opaque", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(accounting) as System.Collections.IDictionary)?.Cast<System.Collections.DictionaryEntry>().Select(p => new { id = p.Key, evidence = p.Value }).ToArray(),
+            claimRows = records?.Keys.Cast<long>().Select(id => new { id, claim = JsonSerializer.SerializeToElement(records[id], Json) }).ToArray(),
+            opaqueRows = OpaqueRows(accounting),
             coreAssembly = engine.Assembly.FullName, coreModule = engine.Assembly.ManifestModule.ModuleVersionId,
             coreCopies = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.GetType("Concealment.Accounting.AccountingApi", false) != null),
             oldGrantController = PluginType.Assembly.GetType("Shared.Concealment.ProductionBoostManager", false) != null,

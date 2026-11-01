@@ -667,12 +667,17 @@ internal static class OfflineModel
 	private static Dictionary<string, decimal> Totals(OfflineProfile p) => p.Inventories.SelectMany(i => i.Stacks).GroupBy(s => s.Item).ToDictionary(g => g.Key, g => g.Sum(s => s.Amount));
 	private static double Mod(double value, double period) => (value % period + period) % period;
 
-	internal static void Validate(OfflineProfile p)
+	internal static void ValidateClock(OfflineProfile p)
 	{
 		if (p.Schema is not (1 or OfflineProfile.CurrentSchema) || p.SimulatedThrough < p.FrozenFrame || p.FrozenFrame < 0
 			|| (p.Schema == 1 ? p.ClockFrameSeconds is not (.016 or (1.0 / 60)) || p.SimulatedThrough != p.FrozenFrame : p.ClockFrameSeconds != 1.0 / 60)
 			|| !double.IsFinite(p.ResourceFrameRemaining) || p.ResourceFrameRemaining <= 0 || p.ResourceFrameRemaining > 1
 			|| !double.IsFinite(p.SunFrame) || !double.IsFinite(p.SunPeriodFrames) || p.SunPeriodFrames < 0) throw new InvalidDataException("Invalid offline profile clock/schema");
+	}
+
+	internal static void Validate(OfflineProfile p)
+	{
+		ValidateClock(p);
 		foreach (var item in p.Items.Values) if (item.Volume < 0 || item.Mass < 0) throw new InvalidDataException("Invalid item dimensions");
 		for (int i = 0; i < p.Inventories.Count; i++)
 		{

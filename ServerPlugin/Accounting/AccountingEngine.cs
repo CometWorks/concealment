@@ -47,6 +47,9 @@ internal static partial class AccountingEngine
 		foreach (var entry in profiles)
 		{
 			var profile = entry.Profile;
+			// An ambiguous clock must retain the immutable Final for recovery retry,
+			// rather than thawing unpaid stocks and dropping its profile on the next save.
+			OfflineModel.ValidateClock(profile);
 			try
 			{
 				if (profile.Members.Any(id => !entry.Members.Contains(id) || !entities.ContainsKey(id)))

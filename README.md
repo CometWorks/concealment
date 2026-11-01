@@ -139,6 +139,8 @@ clock discriminator (`.016` or `1/60`) migrate on a detached copy, with an expli
 time stay intact. The immutable original remains the retry basis; already paid
 receipts earn no second interval. Partly advanced schema-1 profiles and unknown
 clocks are refused because their stock/phase history cannot be reconstructed.
+Cluster propagates that refusal before recovery can instantiate entities or
+replace the immutable Final; standalone persists its group rejection.
 Keep the corrected Cluster adapter and pinned core together. Contract-1 adapters
 are incompatible; rollback requires the matching pre-upgrade world/Final/package,
 never an old binary over schema-2 claims. No retroactive adjustment is made to

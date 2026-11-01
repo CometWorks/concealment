@@ -129,7 +129,7 @@ public sealed partial class Probe
     }
 
     private static object EnvironmentState(MyCubeGrid grid) => new {
-        generators = grid.GetFatBlocks<MyGasGenerator>().Select(g => new { block = g.EntityId, ice = (decimal)g.GetInventory().GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ore/Ice")), g.IsWorking }).ToArray(),
+        generators = grid.GetFatBlocks<MyGasGenerator>().Select(g => new { block = g.EntityId, ice = (decimal)g.GetInventory().GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ore/Ice")), pendingGas = g.m_gasOutputAggregate.Values.Sum(), pendingIce = PendingIce(g), g.IsWorking }).ToArray(),
         tanks = grid.GetFatBlocks<MyGasTank>().Select(t => new { block = t.EntityId, ratio = t.FilledRatio, capacity = t.Capacity, t.IsWorking }).ToArray(),
         engines = grid.GetFatBlocks<MyGasFueledPowerProducer>().Select(e => new { block = e.EntityId, capacity = e.Capacity }).ToArray(),
         solar = grid.GetFatBlocks<MySolarPanel>().Select(p => new { block = p.EntityId, maximum = p.SourceComp.MaxOutput, output = p.SourceComp.CurrentOutput }).ToArray(),
@@ -144,4 +144,14 @@ public sealed partial class Probe
                 creditMs = native != null && !saved.Activating ? saved.UpkeepTime : manager.m_timeLeft.TotalMilliseconds, saved.Activating };
         }).ToArray(),
     };
+    private static double PendingIce(MyGasGenerator generator)
+    {
+        double ice = 0;
+        foreach (var pending in generator.m_gasOutputAggregate)
+        {
+            var gas = pending.Key;
+            ice += generator.GasToIce(ref gas, pending.Value);
+        }
+        return ice;
+    }
 }

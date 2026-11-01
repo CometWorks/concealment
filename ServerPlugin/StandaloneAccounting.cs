@@ -269,7 +269,19 @@ internal sealed class StandaloneAccounting : IDisposable
         {
             ValidateOwner();
             ValidateLink(link.Base, link.Top);
-            if (link.Base.TopBlock == null) link.Base.UpdateAttachState();
+            if (link.Base.TopBlock == null)
+            {
+                // Pistons load their native subpart physics in the deferred
+                // callback too. Attach needs it; advancing piston motion does not.
+                if (link.Base is MyPistonBase piston && piston.Subpart3 == null)
+                {
+                    piston.LoadSubparts();
+                    ValidateOwner();
+                    ValidateLink(link.Base, link.Top);
+                }
+                link.Base.UpdateAttachState();
+                foreach (var grid in grids.Values) ConcealGroup.SuppressUpdates(grid, null);
+            }
             ValidateOwner();
             ValidateLink(link.Base, link.Top);
             if (link.Base.TopBlock != link.Top || link.Top.Stator != link.Base || !link.Base.IsAttached)

@@ -14,6 +14,7 @@ partial class Subject {
   alter(grids,saved,basis,top);bool success=true;try{RestoreMechanicalLinks(grids.Select((g,i)=>(g,row,saved[i])).ToArray());}catch(InvalidDataException){success=false;}
   if(success!=accept)throw new Exception(name+" wrong disposition");checks++;
   if(row.Epoch!="unchanged"||row.Profiles.Length!=1)throw new Exception(name+" changed claim");checks++;
+  if(accept&&piston&&((MyPistonBase)basis).Subpart3==null)throw new Exception(name+" missing native subpart prerequisite");
   if(accept&&calls!=1)throw new Exception(name+" missing native invocation");
  }
  public void Run(){

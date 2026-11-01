@@ -59,8 +59,13 @@ public sealed partial class Probe
         var grid = Named("extract-powered");
         var builder = MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_PistonBase>("LargePistonBase");
         builder.Min = new SerializableVector3I(10, 0, 0); builder.Velocity = 0;
-        var piston = (MyPistonBase)grid.AddBlock(builder, false).FatBlock;
-        piston.RecreateTop(builder.Owner, instantBuild: true);
+        grid.AddBlock(builder, false);
+        return Inspect();
+    }
+    private static object PistonTop()
+    {
+        var piston = Named("extract-powered").GetFatBlocks<MyPistonBase>().Single();
+        piston.RecreateTop(piston.OwnerId, instantBuild: true);
         if (piston.TopGrid == null) throw new InvalidOperationException("Native piston top missing");
         piston.TopGrid.DisplayName = "extract-recovery-top";
         return Inspect();

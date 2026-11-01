@@ -88,6 +88,7 @@ public sealed partial class Probe : IPlugin
             case "fixtures": return Fixtures();
             case "recovery-fixtures": return RecoveryFixtures();
             case "piston-fixtures": return PistonFixtures();
+            case "piston-top": return PistonTop();
             case "manager-failure": return ArmManagerFailure();
             case "admission": return RecoveryAdmission(r.GetProperty("name").GetString());
             case "world-unload":

@@ -7,7 +7,8 @@ class Physics { public VRageMath.MatrixD GetRigidBodyMatrix(VRageMath.MatrixD m)
 class Body { public void Deactivate(){} }
 class Block { public long EntityId; public MyCubeGrid CubeGrid; public bool MarkedForClose; }
 class MyMechanicalConnectionBlockBase:Block { public long? Target; public MyAttachableTopBlockBase TopBlock; public bool IsAttached; public Action Attach; public MyObjectBuilder_MechanicalConnectionBlock GetObjectBuilderCubeBlock()=>new(){EntityId=EntityId,TopBlockId=Target}; public void UpdateAttachState()=>Attach(); }
-class Piston:MyMechanicalConnectionBlockBase {}
+class Piston:MyPistonBase {}
+class MyPistonBase:MyMechanicalConnectionBlockBase { public object Subpart3; public void LoadSubparts()=>Subpart3=new(); }
 class MyAttachableTopBlockBase:Block { public MyMechanicalConnectionBlockBase Stator; }
 class BuilderBlock { public long EntityId; }
 class MyObjectBuilder_MechanicalConnectionBlock:BuilderBlock { public long? TopBlockId; }

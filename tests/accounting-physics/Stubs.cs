@@ -8,8 +8,8 @@ namespace Havok {
   public bool IsDisposed,InWorld=true;
   public override int GetHashCode()=>IsDisposed?0:base.GetHashCode();
   public override bool Equals(object value)=>ReferenceEquals(this,value)||(IsDisposed&&value is HkConstraint c&&c.IsDisposed);
-  public bool Enabled { get=>m_enabled&&!m_forceDisabled; set { bool v=value; foreach(var o in Native.Owners)o.Setting(this,v,false,ref v);m_enabled=v; } }
-  public bool ForceDisabled {get=>m_forceDisabled;set {bool v=value;foreach(var o in Native.Owners)o.Setting(this,v,true,ref v);m_forceDisabled=v;} }
+  public bool Enabled { get=>m_enabled&&!m_forceDisabled; set { bool v=value; foreach(var o in Native.Owners)o.Setting(this,v,false,ref v);if(Native.Owners.All(o=>o.CanSet(this)))m_enabled=v; } }
+  public bool ForceDisabled {get=>m_forceDisabled;set {bool v=value;foreach(var o in Native.Owners)o.Setting(this,v,true,ref v);if(Native.Owners.All(o=>o.CanSet(this)))m_forceDisabled=v;} }
  }
 }
 namespace Sandbox.Common.ObjectBuilders { class MyObjectBuilder_MechanicalConnectionBlock { public long? TopBlockId; } }

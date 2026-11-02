@@ -96,7 +96,7 @@ internal static partial class AccountingEngine
 		return null;
 	}
 
-	internal static string Signature(MyCubeGrid[] grids, bool includePose = true)
+	internal static string Signature(MyCubeGrid[] grids, bool includePose = true, bool includeRecipes = true)
 	{
 		var text = new StringBuilder();
 		text.Append(MyFinalBuildConstants.APP_VERSION_STRING).Append('|').Append(HostSettings.GetInt("offline.solarSteps"))
@@ -121,7 +121,7 @@ internal static partial class AccountingEngine
 				if (block is MyProductionBlock production)
 				{
 					text.Append(':').Append(production.UseConveyorSystem);
-					foreach (var recipe in production.Queue.Select(q => q.Blueprint.Id).Distinct().OrderBy(id => id.ToString())) text.Append(':').Append(recipe);
+					if (includeRecipes) foreach (var recipe in production.Queue.Select(q => q.Blueprint.Id).Distinct().OrderBy(id => id.ToString())) text.Append(':').Append(recipe);
 					if (block is MyAssembler assembler) text.Append(':').Append(assembler.DisassembleEnabled).Append(':').Append(assembler.RepeatEnabled).Append(':').Append(assembler.IsSlave);
 				}
 			}

@@ -21,6 +21,11 @@ partial class Subject {
  Record Row(long root,long[] members,string epoch,bool profile=false)=>new(){World="world",Epoch=epoch,Root=root,Members=members,Concealed=true,CheckpointTicks=MySession.Static.ElapsedGameTime.Ticks,Profiles=profile?[new(){Tag="original-unpaid-profile",Members=members}]:null};
  void Load(MyCubeGrid g,Record row)=>Restore(g,new(){Raw=Raw(row)});
  public void Run(){
+  var history="{\"Schema\":1,\"Mechanical\":{\"9\":{\"Present\":true,\"Enabled\":true,\"ForceDisabled\":false,\"Subparts\":null}}}";
+  using(var migrated=JsonDocument.Parse(MigrateMechanicalHistory(history)))Check(migrated.RootElement.GetProperty("Mechanical").GetProperty("9").GetProperty("IntentVersion").GetInt32()==1,"unforced legacy history migrates known request");
+  bool refused=false;try{MigrateMechanicalHistory(history.Replace("\"ForceDisabled\":false","\"ForceDisabled\":true"));}catch(InvalidDataException){refused=true;}Check(refused,"forced legacy history refuses ambiguous intent");
+  Check(MigrateMechanicalHistory("{\"Schema\":1}")=="{\"Schema\":1}","genuine no-history observation compatibility");
+
   foreach(string scenario in new[]{"missing-root","missing-member","mismatched-members","mismatched-epoch","topology-extra"}){
    MyEntities.Grids.Clear();MyCubeGridGroups.Static=new();
    var grids=Grids(scenario=="topology-extra"?[10,11,12]:[10,11]);

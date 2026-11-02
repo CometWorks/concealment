@@ -28,7 +28,7 @@ internal sealed class StandaloneAccounting : IDisposable
 {
     private sealed class Record
     {
-        public int Schema = 1;
+        public int Schema = 2;
         public string World, Epoch, StockHash, Signature, Rejected;
         public long Root, AppliedThrough, CheckpointTicks;
         public long[] Members = [], Projectors = [];
@@ -76,7 +76,8 @@ internal sealed class StandaloneAccounting : IDisposable
         Patch(AccessTools.Method(typeof(MyCubeGrid), nameof(MyCubeGrid.GetObjectBuilder), new[] { typeof(bool) }), nameof(Saving), false);
         Patch(AccessTools.PropertySetter(typeof(MyMechanicalConnectionBlockBase), "Constraint"), nameof(ConstraintChanging), true);
         Patch(AccessTools.Constructor(typeof(Havok.HkConstraint), new[] { typeof(Havok.HkRigidBody), typeof(Havok.HkRigidBody), typeof(Havok.HkConstraintData), typeof(Havok.HkConstraintPriority) }), nameof(ConstraintConstructed), false);
-        Patch(AccessTools.Method(typeof(Havok.HkConstraint), "OnAddedToWorld"), nameof(ConstraintAdded), true);
+        Patch(AccessTools.Method(typeof(Havok.HkConstraint), "OnAddedToWorld"), nameof(ConstraintAdded), true, nameof(ConstraintAdmissionFinished));
+        Patch(AccessTools.Method(typeof(Havok.HkConstraint), "OnRemovedFromWorld"), nameof(ConstraintRemoved), true);
         Patch(AccessTools.PropertySetter(typeof(Havok.HkConstraint), "Enabled"), nameof(ConstraintEnabled), true);
         Patch(AccessTools.PropertySetter(typeof(Havok.HkConstraint), "ForceDisabled"), nameof(ConstraintForced), true);
         foreach (var type in typeof(MyMechanicalConnectionBlockBase).Assembly.GetTypes().Where(t => typeof(MyMechanicalConnectionBlockBase).IsAssignableFrom(t)))
@@ -144,17 +145,26 @@ internal sealed class StandaloneAccounting : IDisposable
     {
         foreach (var owner in Current?.physics.ToArray() ?? []) owner.Constructed(__instance);
     }
-    private static void ConstraintAdded(Havok.HkConstraint __instance)
+    private static void ConstraintAdded(Havok.HkConstraint __instance, out MechanicalPhysics[] __state)
     {
+        __state = Current?.physics.ToArray() ?? [];
         var current = Current;
         if (current == null) return;
-        var owners = current.physics.ToArray();
+        var owners = __state;
         bool unpaid = owners.Any(o => o.UnpaidOwns(__instance));
         foreach (var owner in owners)
         {
             owner.Added(__instance, !unpaid);
             if (owner.ReleaseComplete) current.physics.Remove(owner);
         }
+    }
+    private static void ConstraintAdmissionFinished(Havok.HkConstraint __instance, MechanicalPhysics[] __state)
+    {
+        foreach (var owner in __state ?? []) owner.AdmissionFinished(__instance);
+    }
+    private static void ConstraintRemoved(Havok.HkConstraint __instance)
+    {
+        foreach (var owner in Current?.physics.ToArray() ?? []) owner.Removed(__instance);
     }
     private static bool ConstraintEnabled(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, false);
     private static bool ConstraintForced(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, true);
@@ -213,6 +223,22 @@ internal sealed class StandaloneAccounting : IDisposable
         finally { owner.initializingPaidPhysics.Remove(__instance.EntityId); }
     }
 
+    private static string MigrateMechanicalHistory(string raw)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(raw);
+        if (root?["Schema"]?.GetValue<int>() != 1 || root["Mechanical"] is not System.Text.Json.Nodes.JsonObject history) return raw;
+        void Upgrade(System.Text.Json.Nodes.JsonNode state)
+        {
+            if (state == null) return;
+            if (state["IntentVersion"] != null) throw new InvalidDataException("Unexpected intent version in legacy mechanical history");
+            if (state["ForceDisabled"]?.GetValue<bool>() != false)
+                throw new InvalidDataException("Legacy forced mechanical history has ambiguous requested Enabled intent");
+            state["IntentVersion"] = 1;
+            Upgrade(state["Subparts"]);
+        }
+        foreach (var entry in history) Upgrade(entry.Value);
+        return root.ToJsonString();
+    }
     private void Restore(MyCubeGrid grid, MyObjectBuilder_CubeGrid builder)
     {
         plugin.Manager.Production.Restored(grid, builder);
@@ -221,9 +247,9 @@ internal sealed class StandaloneAccounting : IDisposable
         try
         {
             if (raw.Length > AccountingMetadata.MaximumBytes) throw new InvalidDataException("Oversized standalone claim");
-            var record = JsonSerializer.Deserialize<Record>(raw, OfflineProfile.Json) ?? throw new InvalidDataException("Missing standalone claim");
+            var record = JsonSerializer.Deserialize<Record>(MigrateMechanicalHistory(raw), OfflineProfile.Json) ?? throw new InvalidDataException("Missing standalone claim");
             if (record.CheckpointTicks != MySession.Static.ElapsedGameTime.Ticks) throw new InvalidDataException("Accounting stocks and world clock are from different checkpoints");
-            if (record.Schema != 1 || record.Root == 0 || !record.Members.Contains(grid.EntityId) || string.IsNullOrEmpty(record.Epoch)) throw new InvalidDataException("Invalid standalone claim schema/membership");
+            if (record.Schema is not (1 or 2) || record.Root == 0 || !record.Members.Contains(grid.EntityId) || string.IsNullOrEmpty(record.Epoch)) throw new InvalidDataException("Invalid standalone claim schema/membership");
             records[grid.EntityId] = record;
             if (record.MechanicalPaid && !record.Concealed && record.Rejected == null)
             {
@@ -234,6 +260,8 @@ internal sealed class StandaloneAccounting : IDisposable
                 foreach (var block in blocks)
                 {
                     var state = record.Mechanical[block.EntityId];
+                    if (state.IntentVersion != 1 || state.Subparts != null && state.Subparts.IntentVersion != 1)
+                        throw new InvalidDataException("Unknown paid mechanical intent representation");
                     if (!state.Present && (state.Enabled || state.ForceDisabled || state.InWorld == true)
                         || block is MyPistonBase && (state.Subparts == null || state.Subparts.InWorld == null)
                         || block is not MyPistonBase && state.Subparts != null)
@@ -608,6 +636,7 @@ internal sealed class StandaloneAccounting : IDisposable
         Dictionary<long, MyObjectBuilder_EntityBase> original = null;
         AccountingStockCommit.Prepared rollback = null;
         bool mutated = false;
+        string settingsSignature = null;
         var lockedInventories = new List<MyInventory>();
         var beforeContents = typeof(MyInventoryBase).GetEvent("BeforeContentsChanged");
         Action<MyInventoryBase> refuseStockMutation = _ => throw new InvalidOperationException("Native inventory mutation during accounting commit; retry after settlement");
@@ -617,7 +646,7 @@ internal sealed class StandaloneAccounting : IDisposable
             {
                 if (record.World != AccountingStock.World || !group.MechanicalPhysicsIntact || group.Grids.Any(g => g.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(g.EntityId), g))
                 || !record.Members.Order().SequenceEqual(group.Grids.Select(g => g.EntityId).Order())
-                || AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null) != record.Signature
+                || AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null, settingsSignature == null) != (settingsSignature ?? record.Signature)
                 || record.Poses != null && !(group.HoldsMechanicalPhysics
                     ? AccountingStock.SameLoadedPoses(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses, AccountingStock.Poses(group.Grids.OrderBy(g => g.EntityId)))
                     : AccountingStock.SamePoses(record.Poses, AccountingStock.Poses(group.Grids.OrderBy(g => g.EntityId))))
@@ -643,7 +672,8 @@ internal sealed class StandaloneAccounting : IDisposable
             var desired = original.ToDictionary(p => p.Key, p => (MyObjectBuilder_EntityBase)p.Value.Clone());
             var modeled = record.Profiles.Select(p => AccountingEngine.ModelForHost(p, Frame)).ToArray();
             for (int i = 0; i < modeled.Length; i++) AccountingEngine.Commit(record.Profiles[i], modeled[i].Model, desired);
-            var prepared = AccountingStockCommit.Prepare(group.Grids.ToArray(), desired, modeled.Select(m => m.Model).ToArray());
+            var stage = original.ToDictionary(p => p.Key, p => (MyObjectBuilder_EntityBase)p.Value.Clone());
+            var prepared = AccountingStockCommit.Prepare(group.Grids.ToArray(), desired, modeled.Select(m => m.Model).ToArray(), stage: stage);
             rollback = AccountingStockCommit.Prepare(group.Grids.ToArray(), original, record.Profiles, restore: true);
             foreach (var inventory in group.Grids.SelectMany(g => g.GetFatBlocks()).SelectMany(b => Enumerable.Range(0, b.InventoryCount).Select(b.GetInventory)).Where(i => i != null).Distinct())
             {
@@ -651,7 +681,14 @@ internal sealed class StandaloneAccounting : IDisposable
                 lockedInventories.Add(inventory);
             }
             applying = true; mutated = true;
-            foreach (var action in prepared.Write) { ValidateIdentity(); action(); ValidateIdentity(); }
+            settingsSignature = AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null, false);
+            for (int i = 0; i < prepared.Write.Length; i++)
+            {
+                ValidateResult(stage);
+                prepared.Advance[i]();
+                prepared.Write[i]();
+                ValidateResult(stage);
+            }
             ValidateResult(desired);
             foreach (var action in prepared.Notify) { ValidateIdentity(); action(); ValidateResult(desired); }
             ValidateResult(desired);

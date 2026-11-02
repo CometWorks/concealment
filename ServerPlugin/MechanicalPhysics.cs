@@ -15,6 +15,7 @@ internal sealed class MechanicalPhysics
 {
     internal sealed class State
     {
+        [JsonRequired] public int IntentVersion = 1;
         [JsonRequired] public bool Present;
         [JsonRequired] public bool Enabled;
         [JsonRequired] public bool ForceDisabled;
@@ -35,7 +36,8 @@ internal sealed class MechanicalPhysics
     private readonly Dictionary<long, MyCubeGrid> grids = new();
     private readonly Dictionary<long, Entry> entries = new();
     private readonly Dictionary<HkConstraint, State> owned = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<HkConstraint> added = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<HkConstraint> admitting = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<HkConstraint> removed = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<HkConstraint, State> releasePending = new(ReferenceEqualityComparer.Instance);
     private static readonly System.Reflection.FieldInfo EnabledField = typeof(HkConstraint).GetField("m_enabled", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
     private static readonly System.Reflection.FieldInfo ForcedField = typeof(HkConstraint).GetField("m_forceDisabled", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
@@ -84,6 +86,8 @@ internal sealed class MechanicalPhysics
         foreach (var entry in entries.Values)
         {
             entry.State = saved[entry.Block.EntityId];
+            if (entry.State.IntentVersion != 1 || entry.State.Subparts != null && entry.State.Subparts.IntentVersion != 1)
+                throw new InvalidDataException("Unknown mechanical intent representation");
             if (!entry.State.Present && (entry.State.Enabled || entry.State.ForceDisabled || entry.State.InWorld == true)
                 || entry.Block is not MyPistonBase && entry.State.Subparts != null)
                 throw new InvalidDataException("Invalid saved mechanical constraint absence");
@@ -119,7 +123,7 @@ internal sealed class MechanicalPhysics
                 && e.Subpart.ForceDisabled && (e.Subpart.InWorld ? !e.Subpart.Enabled : !(bool)EnabledField.GetValue(e.Subpart)))));
 
     private static State Read(HkConstraint constraint) => constraint?.IsDisposed == true ? new State { Present = true } : new State { Present = constraint != null,
-        Enabled = constraint != null && (constraint.InWorld ? constraint.Enabled : (bool)EnabledField.GetValue(constraint)), ForceDisabled = constraint?.ForceDisabled == true, InWorld = constraint?.InWorld == true };
+        Enabled = constraint != null && (bool)EnabledField.GetValue(constraint), ForceDisabled = constraint?.ForceDisabled == true, InWorld = constraint?.InWorld == true };
     private void Subpart(Entry entry, HkConstraint constraint)
     {
         if (!ReferenceEquals(entry.Subpart, constraint))
@@ -147,7 +151,7 @@ internal sealed class MechanicalPhysics
         if (constraint == null) return;
         if (!owned.ContainsKey(constraint)) owned.Add(constraint, Read(constraint));
         if (constraint.IsDisposed) { invalid = true; return; }
-        if (!constraint.InWorld && !added.Contains(constraint))
+        if (!CanSet(constraint))
         {
             // Havok setters require world admission. Hold managed intent now;
             // Added applies the native disable before admission callbacks.
@@ -202,7 +206,8 @@ internal sealed class MechanicalPhysics
             return;
         }
         if (!owned.ContainsKey(constraint)) return;
-        added.Add(constraint);
+        removed.Remove(constraint);
+        admitting.Add(constraint);
         foreach (var entry in entries.Values.Where(e => ReferenceEquals(e.Subpart, constraint)))
         {
             if (!ReferenceEquals(creating, entry.Block)) invalid = true;
@@ -210,7 +215,19 @@ internal sealed class MechanicalPhysics
         }
         Own(constraint);
     }
-    internal bool CanSet(HkConstraint constraint) => released || !owned.ContainsKey(constraint) || !constraint.IsDisposed && (constraint.InWorld || added.Contains(constraint));
+    internal void AdmissionFinished(HkConstraint constraint) => admitting.Remove(constraint);
+    internal void Removed(HkConstraint constraint)
+    {
+        admitting.Remove(constraint);
+        if (released || !owned.ContainsKey(constraint)) return;
+        removed.Add(constraint);
+        invalid = true;
+        // Removal callbacks run before native membership is cleared. Revoke the
+        // admission exception now, including a removal nested inside admission.
+        Own(constraint);
+    }
+    internal bool CanSet(HkConstraint constraint) => released || !owned.ContainsKey(constraint)
+        || !constraint.IsDisposed && !removed.Contains(constraint) && (constraint.InWorld || admitting.Contains(constraint));
     internal void Setting(HkConstraint constraint, bool value, bool force, ref bool allowed)
     {
         if (changing || released || !owned.ContainsKey(constraint)) return;
@@ -297,7 +314,8 @@ internal sealed class MechanicalPhysics
             if (entry.Block is MyPistonBase) RestoreConstraint(entry.Subpart, entry.State.Subparts);
         }
         owned.Clear();
-        added.Clear();
+        admitting.Clear();
+        removed.Clear();
     }
     private void RestoreConstraint(HkConstraint constraint, State state)
     {

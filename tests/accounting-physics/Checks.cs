@@ -37,6 +37,16 @@ static class Checks {
   (po,piston)=Piston(true);po.RestoreStates(ps);po.Structural(piston,()=>{piston.m_subpartsConstraint=new(){InWorld=false,RigidBodyA=piston.CubeGrid.Physics.RigidBody,RigidBodyB=piston.m_subpartPhysics.RigidBody};po.Constructed(piston.m_subpartsConstraint);piston.Constraint=new();po.Assign(piston,piston.Constraint);});Check(po.Intact&&po.Snapshot()[40].Subparts.InWorld==true&&!piston.m_subpartsConstraint.InWorld);po.ValidateComplete();po.AuthorizeRelease();po.Release();Check(!piston.m_subpartsConstraint.Enabled);
   Check(!po.ReleaseComplete);var deferred=piston.m_subpartsConstraint;deferred.InWorld=true;po.Added(deferred);Check(po.ReleaseComplete&&!deferred.Enabled&&!deferred.ForceDisabled);
   var paid=MechanicalPhysics.RestorePaid(piston,ps[40]);Check(paid==null&&!piston.m_subpartsConstraint.Enabled);
+  foreach(bool requested in new[]{false,true}) foreach(bool forced in new[]{false,true}) {
+   Native.Owners.Clear();MyEntities.Entities.Clear();var grid=new MyCubeGrid{EntityId=50};var block=new MyMechanicalConnectionBlockBase{EntityId=60,CubeGrid=grid};grid.Blocks.Add(block);MyEntities.Entities[60]=block;
+   block.Constraint=new(){Enabled=requested,ForceDisabled=forced};var live=MechanicalPhysics.SnapshotLive(grid);Check(live[60].Enabled==requested&&live[60].ForceDisabled==forced&&live[60].IntentVersion==1);
+   var owner=new MechanicalPhysics(new[]{grid});Native.Owners.Add(owner);owner.ValidateComplete();owner.AuthorizeRelease();owner.Release();Check(block.Constraint.ForceDisabled==forced);block.Constraint.ForceDisabled=false;Check(block.Constraint.Enabled==requested);
+  }
+  (o,b)=Make(true);HkConstraint removed=null;
+  o.Structural(b[0],()=>{removed=new(){InWorld=false,RigidBodyA=b[0].CubeGrid.Physics.RigidBody};o.Constructed(removed);b[0].Constraint=removed;o.Added(removed);Check(o.CanSet(removed));o.Removed(removed);Check(!o.CanSet(removed));o.AdmissionFinished(removed);});
+  Check(!o.CanSet(removed)&&!o.Intact);o.Hold();Check(removed.ForceDisabled&&!removed.Enabled);
+  (o,b)=Make(true);var admitted=new HkConstraint{InWorld=false,RigidBodyA=b[0].CubeGrid.Physics.RigidBody};o.Structural(b[0],()=>{o.Constructed(admitted);b[0].Constraint=admitted;o.Added(admitted);o.AdmissionFinished(admitted);});Check(!o.CanSet(admitted));
+  admitted.InWorld=true;Check(o.CanSet(admitted));o.Removed(admitted);admitted.InWorld=false;o.Hold();Check(!o.CanSet(admitted)&&!o.Intact);
   Console.WriteLine($"PASS {count} actual-owner state/absence/replacement/disposal/exception/durable/required-field checks; inert Havok");
  }
 }

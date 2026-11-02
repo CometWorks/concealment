@@ -27,12 +27,19 @@ namespace Shared.Concealment;
 // are committed. Reentrant snapshots are refused by StandaloneAccounting.Saving.
 internal static class AccountingStockCommit
 {
-    internal sealed record Prepared(Action[] Write, Action[] Notify);
-    internal static Prepared Prepare(MyCubeGrid[] grids, Dictionary<long, MyObjectBuilder_EntityBase> builders, OfflineProfile[] models, bool restore = false)
+    internal sealed record Prepared(Action[] Write, Action[] Notify, Action[] Advance);
+    internal static Prepared Prepare(MyCubeGrid[] grids, Dictionary<long, MyObjectBuilder_EntityBase> builders, OfflineProfile[] models, bool restore = false, Dictionary<long, MyObjectBuilder_EntityBase> stage = null)
     {
         var blocks = grids.SelectMany(g => g.GetFatBlocks()).ToDictionary(b => b.EntityId);
         var saved = builders.Values.Cast<MyObjectBuilder_CubeGrid>().SelectMany(g => g.CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
+        var staged = stage?.Values.Cast<MyObjectBuilder_CubeGrid>().SelectMany(g => g.CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
+        var advance = new List<Action>();
         var write = new List<Action>(); var notify = new List<Action>();
+        void Add(long block, Action action, Action<MyObjectBuilder_CubeBlock> next)
+        {
+            write.Add(action);
+            advance.Add(() => { if (staged != null) next(staged[block]); });
+        }
         foreach (var profile in models)
         {
             foreach (var inventory in profile.Inventories)
@@ -47,12 +54,17 @@ internal static class AccountingStockCommit
                 if (ids.Count != items.Count) throw new InvalidDataException("Duplicate modeled item identity");
                 uint next = ob.nextItemId;
                 var mass = live.m_currentMass.Value; var volume = live.m_currentVolume.Value;
-                write.Add(() =>
+                Add(inventory.Block, () =>
                 {
                     live.m_items = items; live.m_usedIds = ids; live.m_nextItemID = next;
                     // Rollback must not rerun the notification that invalidated the
                     // transaction. Restore its captured derived values silently.
                     if (restore) { live.m_currentMass.m_value = mass; live.m_currentVolume.m_value = volume; }
+                }, block =>
+                {
+                    var inventories = AccountingEngine.Inventories(block).ToArray();
+                    var target = inventories.FirstOrDefault(i => i.InventoryId == inventory.InventoryId) ?? inventories[inventory.Index];
+                    target.Items = ob.Items;
                 });
                 notify.Add(() => { live.RefreshVolumeAndMass(); live.OnContentsChanged(); });
             }
@@ -66,20 +78,20 @@ internal static class AccountingStockCommit
                         float energy = ((MyObjectBuilder_BatteryBlock)saved[store.Block]).CurrentStoredPower;
                         bool full = restore ? battery.m_isFull.Value : store.Full;
                         int lastUpdate = restore ? battery.m_lastUpdateTime : MySession.Static.GameplayFrameCounter - 1 - (int)store.ElapsedFrames;
-                        write.Add(() => { battery.CurrentStoredPower = energy; battery.m_isFull.Value = full; battery.m_lastUpdateTime = lastUpdate; if (restore) battery.m_storedPower.m_value = energy; });
+                        Add(store.Block, () => { battery.CurrentStoredPower = energy; battery.m_isFull.Value = full; battery.m_lastUpdateTime = lastUpdate; if (restore) battery.m_storedPower.m_value = energy; }, b => ((MyObjectBuilder_BatteryBlock)b).CurrentStoredPower = energy);
                         notify.Add(() => battery.m_storedPower.Value = energy);
                         break;
                     case "Tank":
                         var tank = (MyGasTank)block; float ratio = ((MyObjectBuilder_GasTank)saved[store.Block]).FilledRatio;
-                        write.Add(() => tank.m_filledRatio = ratio);
+                        Add(store.Block, () => tank.m_filledRatio = ratio, b => ((MyObjectBuilder_GasTank)b).FilledRatio = ratio);
                         notify.Add(() => ((Sandbox.ModAPI.IMyGasTank)tank).ChangeFilledRatio(ratio, true));
                         break;
                     case "Engine":
                         var engine = (MyGasFueledPowerProducer)block; float capacity = ((MyObjectBuilder_FueledPowerProducer)saved[store.Block]).Capacity;
-                        write.Add(() => engine.Capacity = capacity); break;
+                        Add(store.Block, () => engine.Capacity = capacity, b => ((MyObjectBuilder_FueledPowerProducer)b).Capacity = capacity); break;
                     case "Jump":
                         var jump = (MyJumpDrive)block; float stored = ((MyObjectBuilder_JumpDrive)saved[store.Block]).StoredPower;
-                        write.Add(() => jump.m_storedPower.SetLocalValue(stored));
+                        Add(store.Block, () => jump.m_storedPower.SetLocalValue(stored), b => ((MyObjectBuilder_JumpDrive)b).StoredPower = stored);
                         notify.Add(() => ((Sandbox.ModAPI.IMyJumpDrive)jump).CurrentStoredPower = stored); break;
                 }
             }
@@ -111,7 +123,7 @@ internal static class AccountingStockCommit
                     }
                     builder.Capacity = capacity;
                 }
-                write.Add(() => { reactor.m_timer.FramesFromLastTrigger = elapsed; reactor.m_timer.TimerTickInFrames = period; reactor.Capacity = capacity; });
+                Add(source.Block, () => { reactor.m_timer.FramesFromLastTrigger = elapsed; reactor.m_timer.TimerTickInFrames = period; reactor.Capacity = capacity; }, b => ((MyObjectBuilder_Reactor)b).Capacity = capacity);
             }
             foreach (var production in profile.Production)
             {
@@ -137,7 +149,11 @@ internal static class AccountingStockCommit
                 var ob = (MyObjectBuilder_Assembler)saved[production.Block];
                 var queue = (ob.Queue ?? []).Select(q => new MyProductionBlock.QueueItem { Blueprint = MyDefinitionManager.Static.GetBlueprintDefinition(q.Id), Amount = q.Amount, ItemId = q.ItemId ?? 0 }).ToList();
                 if (queue.Any(q => q.Blueprint == null)) throw new InvalidDataException("Modeled blueprint disappeared");
-                write.Add(() => { assembler.m_queue = queue; assembler.m_nextItemId = ob.NextItemId; assembler.m_currentQueueItem = null; assembler.CurrentItemIndex = 0; assembler.CurrentProgress = ob.CurrentProgress; });
+                Add(production.Block, () => { assembler.m_queue = queue; assembler.m_nextItemId = ob.NextItemId; assembler.m_currentQueueItem = null; assembler.CurrentItemIndex = 0; assembler.CurrentProgress = ob.CurrentProgress; }, b =>
+                {
+                    var target = (MyObjectBuilder_Assembler)b;
+                    target.Queue = ob.Queue; target.CurrentProgress = ob.CurrentProgress;
+                });
             }
             foreach (var upkeep in profile.Upkeep)
             {
@@ -147,12 +163,12 @@ internal static class AccountingStockCommit
                 // The bubble was removed while concealed. Restore paid credit/settings;
                 // native working/allocation and activation own any future protection.
                 bool activating = manager.m_activating; var remaining = manager.m_timeLeft;
-                write.Add(() =>
+                Add(upkeep.Block, () =>
                 {
                     if (restore) manager.SafeZoneRemove_Server();
                     manager.Deserialize(component);
                     if (restore) { manager.m_activating = activating; manager.m_timeLeft = remaining; }
-                });
+                }, b => b.ComponentContainer.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().Single().SafeZoneOb = component.SafeZoneOb);
                 notify.Add(() =>
                 {
                     zone.ResourceSink.Update();
@@ -165,6 +181,6 @@ internal static class AccountingStockCommit
                 });
             }
         }
-        return new(write.ToArray(), notify.ToArray());
+        return new(write.ToArray(), notify.ToArray(), advance.ToArray());
     }
 }

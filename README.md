@@ -165,7 +165,13 @@ before publication; Havok ForceDisabled protects owned objects even when a callb
 requests enabling. Complete original block/link/claim/closure, stock and pose checks
 surround each structural call, including piston subparts. Invalid callbacks stop later
 calls. Settlement checks the same ownership through native writes and inventory
-notifications before publishing a paid receipt; failures roll stocks back while unpaid. Rollback
+notifications before publishing a paid receipt; failures roll stocks back while unpaid.
+Each write checks an exact prepared intermediate stock basis, including untouched blocks.
+Queue recipes remain part of profiling invalidation; authorized settlement completion
+may remove recipes while immutable topology/settings and every stock stage stay checked.
+Native admission permission ends with its OnAddedToWorld call and is revoked before
+removal callbacks, including removal nested in admission. Removed retained objects
+keep disabled managed intent without unsafe native setters or cleanup re-admission. Rollback
 includes inventories even when unchanged at preparation time, plus native inventory
 caches, queues, phases and reactor capacity derived from fuel. Native inventory
 mutations through BeforeContentsChanged are refused while stock commit/rollback is
@@ -179,9 +185,13 @@ managed intent while inactive and at native world admission after settlement. A 
 unpaid owner takes precedence over any deferred restoration from an older paid interval.
 
 New standalone records include private `Mechanical` state on the root row, with
-required Present/Enabled/ForceDisabled fields per base and piston subpart, plus
+required IntentVersion=1/Present/Enabled/ForceDisabled fields per base and piston subpart, plus
 explicit subpart world-membership history. Missing subpart history in a new piston
-record is refused. It preserves originally disabled
+record is refused. Enabled records the managed requested flag independently of effective native Enabled,
+including when ForceDisabled masks it. Private standalone record schema 2 requires this
+representation on both unpaid and paid history. Schema-1 history with ForceDisabled=true
+is ambiguous and is quarantined without guessing; unforced history safely migrates.
+Genuinely old claims without history retain observation-only compatibility. It preserves originally disabled
 constraints across native saves/reloads; it does not change shared profile schema 2 or
 accounting contract 2. Older claims have no historical ephemeral-constraint state. They
 retain their supported native reconstruction path: record the actual native requested

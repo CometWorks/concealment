@@ -14,6 +14,7 @@ partial class Subject {
   basis.Attach=()=>{calls++;basis.TopBlock=top;top.Stator=basis;basis.IsAttached=true;MyCubeGridGroups.Static.Physical.Add(grids);MyCubeGridGroups.Static.Logical.Add(grids);};
   alter(grids,saved,basis,top);bool success=true;try{RestoreMechanicalLinks(grids.Select((g,i)=>(g,row,saved[i])).ToArray(), new MechanicalPhysics());}catch(InvalidDataException){success=false;}
   if(success!=accept)throw new Exception(name+" wrong disposition");checks++;
+  if(applying)throw new Exception(name+" retained structural snapshot lock");
   if(row.Epoch!="unchanged"||row.Profiles.Length!=1)throw new Exception(name+" changed claim");checks++;
   if(accept&&piston&&((MyPistonBase)basis).Subpart3==null)throw new Exception(name+" missing native subpart prerequisite");
   if(accept&&calls!=1)throw new Exception(name+" missing native invocation");

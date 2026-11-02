@@ -66,7 +66,7 @@ internal sealed class MechanicalPhysics
         && ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId == e.Target
         && (!complete || ReferenceEquals(e.Top, b.TopBlock) && (e.Top == null || ReferenceEquals(e.Top.Stator, b)))
         && ReferenceEquals(e.Expected, b.Constraint)
-        && (e.Expected == null || !e.Expected.IsDisposed && !e.Expected.Enabled && e.Expected.ForceDisabled));
+        && (e.Expected == null || !e.Expected.IsDisposed && e.Expected.InWorld && !e.Expected.Enabled && e.Expected.ForceDisabled));
 
     private void Own(HkConstraint constraint)
     {
@@ -107,7 +107,7 @@ internal sealed class MechanicalPhysics
         added.Add(constraint);
         Own(constraint);
     }
-    internal bool CanSet(HkConstraint constraint) => released || !owned.Contains(constraint) || constraint.InWorld || added.Contains(constraint);
+    internal bool CanSet(HkConstraint constraint) => released || !owned.Contains(constraint) || !constraint.IsDisposed && (constraint.InWorld || added.Contains(constraint));
     internal void Setting(HkConstraint constraint, bool value, bool force, ref bool allowed)
     {
         if (changing || released || !owned.Contains(constraint)) return;

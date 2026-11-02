@@ -116,7 +116,7 @@ internal sealed class MechanicalPhysics
         && (e.Expected == null || !e.Expected.IsDisposed && e.Expected.InWorld && !e.Expected.Enabled && e.Expected.ForceDisabled)
         && (b is not MyPistonBase piston || ReferenceEquals(e.Subpart, piston.m_subpartsConstraint)
             && (e.Subpart == null || !e.Subpart.IsDisposed && e.Subpart.InWorld == e.SubpartInWorld
-                && (!e.Subpart.InWorld || !e.Subpart.Enabled && e.Subpart.ForceDisabled))));
+                && e.Subpart.ForceDisabled && (e.Subpart.InWorld ? !e.Subpart.Enabled : !(bool)EnabledField.GetValue(e.Subpart)))));
 
     private static State Read(HkConstraint constraint) => constraint?.IsDisposed == true ? new State { Present = true } : new State { Present = constraint != null,
         Enabled = constraint != null && (constraint.InWorld ? constraint.Enabled : (bool)EnabledField.GetValue(constraint)), ForceDisabled = constraint?.ForceDisabled == true, InWorld = constraint?.InWorld == true };
@@ -137,17 +137,24 @@ internal sealed class MechanicalPhysics
     internal void Constructed(HkConstraint constraint)
     {
         if (released || !grids.Values.Any(g => g.Physics != null && (g.Physics.RigidBody == constraint.RigidBodyA || g.Physics.RigidBody == constraint.RigidBodyB))) return;
-        Own(constraint);
-        if (creating == null) { invalid = true; return; }
         if (creating is MyPistonBase piston && piston.m_subpartPhysics?.RigidBody == constraint.RigidBodyB)
             Subpart(entries[creating.EntityId], constraint);
+        else Own(constraint);
+        if (creating == null) invalid = true;
     }
     private void Own(HkConstraint constraint)
     {
         if (constraint == null) return;
         owned.Add(constraint);
         if (constraint.IsDisposed) { invalid = true; return; }
-        if (!constraint.InWorld && !added.Contains(constraint)) return;
+        if (!constraint.InWorld && !added.Contains(constraint))
+        {
+            // Havok setters require world admission. Hold managed intent now;
+            // Added applies the native disable before admission callbacks.
+            EnabledField.SetValue(constraint, false);
+            ForcedField.SetValue(constraint, true);
+            return;
+        }
         changing = true;
         try { constraint.ForceDisabled = true; }
         finally { changing = false; }

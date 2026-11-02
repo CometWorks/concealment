@@ -52,6 +52,7 @@ public sealed partial class Probe
             top = b.TopBlock?.EntityId, topGrid = b.TopGrid?.EntityId, parent = b.TopBlock?.Stator?.EntityId,
             flags = (int)b.Flags, needsUpdate = b.NeedsUpdate.ToString(), b.UpdateAttach, b.NeedReattach,
             subpartConstraintEnabled = b is MyPistonBase pc ? pc.m_subpartsConstraint?.Enabled : null,
+            subpartConstraintRequested = b is MyPistonBase pr && pr.m_subpartsConstraint != null ? (bool?)AccessTools.Field(typeof(Havok.HkConstraint), "m_enabled").GetValue(pr.m_subpartsConstraint) : null,
             subpartConstraintForced = b is MyPistonBase pf ? pf.m_subpartsConstraint?.ForceDisabled : null,
             subpartConstraintInWorld = b is MyPistonBase pw ? pw.m_subpartsConstraint?.InWorld : null,
             subpartConstraintIdentity = b is MyPistonBase pi && pi.m_subpartsConstraint != null ? (int?)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(pi.m_subpartsConstraint) : null,

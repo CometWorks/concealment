@@ -107,6 +107,16 @@ public sealed partial class Probe
             transactionFaultFired = true;
             var block = Named("extract-powered").GetFatBlocks<MyMechanicalConnectionBlockBase>().First(b => b.Constraint != null);
             FaultTrace("transaction-before-" + mode);
+            if (mode == "stock")
+            {
+                try { inventory.AddItems(1, MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_Ore>("Iron")); }
+                catch (Exception)
+                {
+                    FaultTrace("transaction-refused-before-stock-write");
+                    throw;
+                }
+                throw new InvalidOperationException("External native stock mutation was not refused");
+            }
             ChangeMechanical(block, mode);
             FaultTrace("transaction-after-" + mode);
         };

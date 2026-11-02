@@ -89,7 +89,29 @@ internal static class AccountingStockCommit
                 if (reactor.m_timer == null) throw new InvalidDataException("Live fuel timer missing");
                 uint elapsed = restore ? reactor.m_timer.FramesFromLastTrigger : checked((uint)(Math.Floor(source.FuelElapsedFrames / 100) * 100));
                 uint period = restore ? reactor.m_timer.TimerTickInFrames : checked((uint)source.FuelTickFrames);
-                write.Add(() => { reactor.m_timer.FramesFromLastTrigger = elapsed; reactor.m_timer.TimerTickInFrames = period; });
+                // Native inventory notification derives reactor capacity from fuel.
+                // Prepare that same cache value so validation remains exact both
+                // before and after notifications; it is not independent stored fuel.
+                var builder = (MyObjectBuilder_Reactor)saved[source.Block];
+                float capacity = builder.Capacity;
+                if (!restore)
+                {
+                    capacity = float.MaxValue;
+                    var inventory = AccountingEngine.Inventories(builder).First();
+                    foreach (var fuel in reactor.BlockDefinition.FuelInfos)
+                    {
+                        var amount = inventory.Items.Where(i => i.PhysicalContent.GetId() == fuel.FuelId)
+                            .Aggregate((VRage.MyFixedPoint)0, (sum, item) => sum + item.Amount);
+                        capacity = Math.Min(capacity, (float)amount / fuel.Ratio);
+                    }
+                    if (capacity == 0 && reactor.IsCreativeModeEnabled)
+                    {
+                        var fuel = reactor.BlockDefinition.FuelInfos[0];
+                        capacity = fuel.FuelDefinition.Mass / fuel.Ratio;
+                    }
+                    builder.Capacity = capacity;
+                }
+                write.Add(() => { reactor.m_timer.FramesFromLastTrigger = elapsed; reactor.m_timer.TimerTickInFrames = period; reactor.Capacity = capacity; });
             }
             foreach (var production in profile.Production)
             {

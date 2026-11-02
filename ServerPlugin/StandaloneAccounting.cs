@@ -10,6 +10,7 @@ using Concealment.Accounting;
 using HarmonyLib;
 using Sandbox;
 using Sandbox.Common.ObjectBuilders;
+using Sandbox.Game;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
@@ -502,6 +503,9 @@ internal sealed class StandaloneAccounting : IDisposable
         Dictionary<long, MyObjectBuilder_EntityBase> original = null;
         AccountingStockCommit.Prepared rollback = null;
         bool mutated = false;
+        var lockedInventories = new List<MyInventory>();
+        var beforeContents = typeof(MyInventoryBase).GetEvent("BeforeContentsChanged");
+        Action<MyInventoryBase> refuseStockMutation = _ => throw new InvalidOperationException("Native inventory mutation during accounting commit; retry after settlement");
         try
         {
             void ValidateIdentity()
@@ -536,6 +540,11 @@ internal sealed class StandaloneAccounting : IDisposable
             for (int i = 0; i < modeled.Length; i++) AccountingEngine.Commit(record.Profiles[i], modeled[i].Model, desired);
             var prepared = AccountingStockCommit.Prepare(group.Grids.ToArray(), desired, modeled.Select(m => m.Model).ToArray());
             rollback = AccountingStockCommit.Prepare(group.Grids.ToArray(), original, record.Profiles, restore: true);
+            foreach (var inventory in group.Grids.SelectMany(g => g.GetFatBlocks()).SelectMany(b => Enumerable.Range(0, b.InventoryCount).Select(b.GetInventory)).Where(i => i != null).Distinct())
+            {
+                beforeContents.AddEventHandler(inventory, refuseStockMutation);
+                lockedInventories.Add(inventory);
+            }
             applying = true; mutated = true;
             foreach (var action in prepared.Write) { ValidateIdentity(); action(); ValidateIdentity(); }
             ValidateResult(desired);
@@ -570,7 +579,11 @@ internal sealed class StandaloneAccounting : IDisposable
             plugin.Log.Error(e, "Accounting group {0} quarantined; no reveal or second claim is allowed", record.Root);
             return false;
         }
-        finally { applying = false; ownSnapshot = false; }
+        finally
+        {
+            foreach (var inventory in lockedInventories) beforeContents.RemoveEventHandler(inventory, refuseStockMutation);
+            applying = false; ownSnapshot = false;
+        }
     }
     private string CachePath => Path.Combine(VRage.FileSystem.MyFileSystem.UserDataPath, "ConcealmentRates." + AccountingStock.Hash(System.Text.Encoding.UTF8.GetBytes(AccountingStock.World)) + ".json");
     internal void SaveCache()

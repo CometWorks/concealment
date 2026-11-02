@@ -250,7 +250,7 @@ public sealed partial class Probe : IPlugin
             mass=(decimal)b.GetInventory(i).CurrentMass, volume=(decimal)b.GetInventory(i).CurrentVolume,
             next=b.GetInventory(i).m_nextItemID, items=b.GetInventory(i).GetItems().Select(v=>new { v.ItemId, amount=(decimal)v.Amount }).ToArray() })).ToArray(),
         refinery = g.GetFatBlocks<MyRefinery>().Select(b => new { block = b.EntityId, input = (decimal)b.InputInventory.GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ore/Iron")), output = (decimal)b.OutputInventory.GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ingot/Iron")), b.IsProducing }).ToArray(),
-        fuel = g.GetFatBlocks<MyReactor>().Select(b => new { block = b.EntityId, uranium = (decimal)b.GetInventory().GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ingot/Uranium")), output = b.SourceComp.CurrentOutput, period = b.m_timer.TimerTickInFrames, phase = b.m_timer.FramesFromLastTrigger }).ToArray(),
+        fuel = g.GetFatBlocks<MyReactor>().Select(b => new { block = b.EntityId, capacity = b.Capacity, uranium = (decimal)b.GetInventory().GetItemAmount(MyDefinitionId.Parse("MyObjectBuilder_Ingot/Uranium")), output = b.SourceComp.CurrentOutput, period = b.m_timer.TimerTickInFrames, phase = b.m_timer.FramesFromLastTrigger }).ToArray(),
         battery = g.GetFatBlocks<MyBatteryBlock>().Select(b => new { block = b.EntityId, stored = b.CurrentStoredPower }).ToArray(),
         environment = EnvironmentState(g),
         blockFlags = g.GetFatBlocks().Select(b => new { block = b.EntityId, concealed = ((int)b.Flags & 4) != 0 }).ToArray(),

@@ -61,6 +61,7 @@ internal sealed class MechanicalPhysics
     }
     private IEnumerable<MyMechanicalConnectionBlockBase> Blocks() => grids.Values.SelectMany(g => g.GetFatBlocks()).OfType<MyMechanicalConnectionBlockBase>();
     internal bool Contains(MyMechanicalConnectionBlockBase block) => grids.TryGetValue(block.CubeGrid.EntityId, out var grid) && ReferenceEquals(grid, block.CubeGrid);
+    internal bool HasBlocks => entries.Count != 0;
     internal bool Intact => !released && !invalid && Blocks().Count() == entries.Count && Blocks().All(b => entries.TryGetValue(b.EntityId, out var e)
         && ReferenceEquals(e.Block, b) && !b.MarkedForClose && ReferenceEquals(MyEntities.GetEntityById(b.EntityId), b)
         && ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId == e.Target
@@ -150,6 +151,7 @@ internal sealed class MechanicalPhysics
             { invalid = true; Own(block.Constraint); }
         foreach (var constraint in owned)
             if (!constraint.IsDisposed) Own(constraint);
+        if (!HasBlocks) return;
         foreach (var grid in grids.Values)
         {
             grid.Physics?.RigidBody?.Deactivate();

@@ -165,7 +165,11 @@ before publication; Havok ForceDisabled protects owned objects even when a callb
 requests enabling. Complete original block/link/claim/closure, stock and pose checks
 surround each structural call, including piston subparts. Invalid callbacks stop later
 calls. Settlement checks the same ownership through native writes and inventory
-notifications before publishing a paid receipt; failures roll stocks back while unpaid.
+notifications before publishing a paid receipt; failures roll stocks back while unpaid. Rollback
+includes inventories even when unchanged at preparation time, plus native inventory
+caches, queues, phases and reactor capacity derived from fuel. Native inventory
+mutations through BeforeContentsChanged are refused while stock commit/rollback is
+in progress, before an external callback can change those stocks.
 
 New standalone records include private `Mechanical` state on the root row, with
 required Present/Enabled/ForceDisabled fields per base. It preserves originally disabled

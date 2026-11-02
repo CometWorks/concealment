@@ -29,7 +29,7 @@ public sealed class ConcealGroup
     private readonly HashSet<long> projectors = new HashSet<long>();
 #if MAGNETAR
     internal MechanicalPhysics Physics { get; set; }
-    internal bool HoldsMechanicalPhysics => Physics != null;
+    internal bool HoldsMechanicalPhysics => Physics?.HasBlocks == true;
     internal bool MechanicalPhysicsIntact => Physics?.Intact ?? true;
 
     internal void HoldMechanicalPhysics() => Physics ??= new MechanicalPhysics(Grids);

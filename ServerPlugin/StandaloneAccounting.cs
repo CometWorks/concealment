@@ -681,6 +681,7 @@ internal sealed class StandaloneAccounting : IDisposable
                 lockedInventories.Add(inventory);
             }
             applying = true; mutated = true;
+            ValidateIdentity(); // Preparation/snapshot callbacks must still match the original recipe-bearing basis.
             settingsSignature = AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null, false);
             for (int i = 0; i < prepared.Write.Length; i++)
             {

@@ -65,7 +65,7 @@ internal sealed class MechanicalPhysics
         {
             var constraint = block.Constraint;
             var state = Read(constraint);
-            var entry = new Entry { Block = block, Expected = constraint, State = state, Target = ((MyObjectBuilder_MechanicalConnectionBlock)block.GetObjectBuilderCubeBlock()).TopBlockId };
+            var entry = new Entry { Block = block, Expected = constraint, State = state, Target = Target(block) };
             entries.Add(block.EntityId, entry);
             if (block is MyPistonBase piston)
             {
@@ -96,6 +96,7 @@ internal sealed class MechanicalPhysics
             entry.Durable = true;
         }
     }
+    internal static long? Target(MyMechanicalConnectionBlockBase block) => block.m_connectionState.Value.TopBlockId;
     private IEnumerable<MyMechanicalConnectionBlockBase> Blocks() => grids.Values.SelectMany(g => g.GetFatBlocks()).OfType<MyMechanicalConnectionBlockBase>();
     internal bool Contains(MyMechanicalConnectionBlockBase block) => grids.TryGetValue(block.CubeGrid.EntityId, out var grid) && ReferenceEquals(grid, block.CubeGrid);
     internal bool DeferredRelease => entries.Values.Any(e => e.Subpart != null && !e.Subpart.IsDisposed && !e.Subpart.InWorld);
@@ -114,7 +115,7 @@ internal sealed class MechanicalPhysics
         && owned.Keys.All(c => c.IsDisposed || entries.Values.Any(e => ReferenceEquals(e.Expected, c) || ReferenceEquals(e.Subpart, c)))
         && Blocks().Count() == entries.Count && Blocks().All(b => entries.TryGetValue(b.EntityId, out var e)
         && ReferenceEquals(e.Block, b) && !b.MarkedForClose && ReferenceEquals(MyEntities.GetEntityById(b.EntityId), b)
-        && ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId == e.Target
+        && Target(b) == e.Target
         && (!complete || ReferenceEquals(e.Top, b.TopBlock) && (e.Top == null || ReferenceEquals(e.Top.Stator, b)))
         && ReferenceEquals(e.Expected, b.Constraint)
         && (e.Expected == null || !e.Expected.IsDisposed && e.Expected.InWorld && !e.Expected.Enabled && e.Expected.ForceDisabled)

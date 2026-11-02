@@ -74,6 +74,7 @@ internal sealed class StandaloneAccounting : IDisposable
         Patch(AccessTools.Method(typeof(MySession), nameof(MySession.GetSector), new[] { typeof(bool) }), nameof(SnapshotAllowed), true);
         Patch(AccessTools.Method(typeof(MyCubeGrid), nameof(MyCubeGrid.Init), new[] { typeof(MyObjectBuilder_EntityBase) }), nameof(Initialized), false);
         Patch(AccessTools.Method(typeof(MyCubeGrid), nameof(MyCubeGrid.GetObjectBuilder), new[] { typeof(bool) }), nameof(Saving), false);
+        Patch(AccessTools.PropertyGetter(typeof(MyMechanicalConnectionBlockBase), "SafeConstraint"), nameof(ConstraintReading), true);
         Patch(AccessTools.PropertySetter(typeof(MyMechanicalConnectionBlockBase), "Constraint"), nameof(ConstraintChanging), true);
         Patch(AccessTools.Constructor(typeof(Havok.HkConstraint), new[] { typeof(Havok.HkRigidBody), typeof(Havok.HkRigidBody), typeof(Havok.HkConstraintData), typeof(Havok.HkConstraintPriority) }), nameof(ConstraintConstructed), false);
         Patch(AccessTools.Method(typeof(Havok.HkConstraint), "OnAddedToWorld"), nameof(ConstraintAdded), true, nameof(ConstraintAdmissionFinished));
@@ -136,6 +137,17 @@ internal sealed class StandaloneAccounting : IDisposable
     private static void ObserveFuel(MyReactor __instance, float timeDeltaMilliseconds, out Action __state) => __state = !ConcealmentRuntime.StandaloneActive ? null : AccountingApi.ObserveReactorFuel(__instance, timeDeltaMilliseconds);
     private static void FuelObserved(Action __state, Exception __exception) { if (ConcealmentRuntime.StandaloneActive && __exception == null) __state?.Invoke(); }
 
+    private static bool ConstraintReading(MyMechanicalConnectionBlockBase __instance, ref Havok.HkConstraint __result)
+    {
+        var owners = Current?.physics.Where(o => !o.Released && o.Contains(__instance)).ToArray() ?? [];
+        if (owners.Length == 0) return true;
+        // Native builder serialization reads SafeConstraint, which otherwise
+        // disposes/recreates removed objects. Unpaid observation must not admit
+        // physics as a side effect of cleanup, inspection or a world save.
+        var constraint = __instance.Constraint;
+        __result = constraint != null && !constraint.IsDisposed && constraint.InWorld && owners.All(o => o.CanSet(constraint)) ? constraint : null;
+        return false;
+    }
     private static void ConstraintChanging(MyMechanicalConnectionBlockBase __instance, Havok.HkConstraint __0)
     {
         foreach (var owner in Current?.physics.ToArray() ?? [])
@@ -204,7 +216,7 @@ internal sealed class StandaloneAccounting : IDisposable
             }
             if (!owner.paidPhysics.TryGetValue(__instance.EntityId, out var pending)) return;
             bool sameTarget = ReferenceEquals(pending.Block, __instance)
-                && ((MyObjectBuilder_MechanicalConnectionBlock)__instance.GetObjectBuilderCubeBlock()).TopBlockId == pending.Target;
+                && MechanicalPhysics.Target(__instance) == pending.Target;
             if (sameTarget)
             {
                 bool present = pending.State.Present == (__instance.Constraint != null) && __instance.Constraint?.IsDisposed != true;
@@ -301,7 +313,7 @@ internal sealed class StandaloneAccounting : IDisposable
         {
             var savedTargets = builder.CubeBlocks.OfType<MyObjectBuilder_MechanicalConnectionBlock>().ToDictionary(b => b.EntityId, b => b.TopBlockId);
             if (!savedTargets.Keys.Order().SequenceEqual(mechanical.Keys.Order()) || grid.GetFatBlocks().OfType<MyMechanicalConnectionBlockBase>()
-                .Any(b => ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId != savedTargets[b.EntityId]))
+                .Any(b => MechanicalPhysics.Target(b) != savedTargets[b.EntityId]))
                 throw new InvalidOperationException("Mechanical state changed during world snapshot; retry after this frame");
         }
         var stored = new Record { World = record.World, Epoch = record.Epoch, Root = record.Root,
@@ -418,7 +430,7 @@ internal sealed class StandaloneAccounting : IDisposable
                 {
                     if (!blocks.TryGetValue(mechanical.EntityId, out var block) || block is not MyMechanicalConnectionBlockBase connection
                         || connection.CubeGrid != entry.Grid
-                        || ((MyObjectBuilder_MechanicalConnectionBlock)connection.GetObjectBuilderCubeBlock()).TopBlockId != mechanical.TopBlockId
+                        || MechanicalPhysics.Target(connection) != mechanical.TopBlockId
                         || mechanical.TopBlockId is not > 0 && connection.TopBlock != null)
                         throw new InvalidDataException("Saved mechanical base identity/target changed");
                     if (mechanical.TopBlockId is > 0)
@@ -445,7 +457,7 @@ internal sealed class StandaloneAccounting : IDisposable
             {
                 if (!blocks.TryGetValue(mechanical.EntityId, out var block) || block is not MyMechanicalConnectionBlockBase connection
                     || connection.CubeGrid != entry.Grid || connection.MarkedForClose
-                    || ((MyObjectBuilder_MechanicalConnectionBlock)connection.GetObjectBuilderCubeBlock()).TopBlockId != mechanical.TopBlockId)
+                    || MechanicalPhysics.Target(connection) != mechanical.TopBlockId)
                     throw new InvalidDataException("Saved mechanical base identity/target changed");
                 if (mechanical.TopBlockId is not > 0)
                 {
@@ -702,7 +714,7 @@ internal sealed class StandaloneAccounting : IDisposable
                 var states = group.Physics.Snapshot();
                 foreach (var piston in group.Grids.SelectMany(g => g.GetFatBlocks()).OfType<MyPistonBase>())
                     if (states[piston.EntityId].Subparts?.InWorld == true)
-                        paidPhysics[piston.EntityId] = (piston, ((MyObjectBuilder_MechanicalConnectionBlock)piston.GetObjectBuilderCubeBlock()).TopBlockId, states[piston.EntityId]);
+                        paidPhysics[piston.EntityId] = (piston, MechanicalPhysics.Target(piston), states[piston.EntityId]);
             }
             releasingPhysics.Add(group); // excess beyond the host cap is forfeited, never banked
             if (group.Physics?.DeferredRelease != true) physics.Remove(group.Physics);

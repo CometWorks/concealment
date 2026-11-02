@@ -171,7 +171,10 @@ Queue recipes remain part of profiling invalidation; authorized settlement compl
 may remove recipes while immutable topology/settings and every stock stage stay checked.
 Native admission permission ends with its OnAddedToWorld call and is revoked before
 removal callbacks, including removal nested in admission. Removed retained objects
-keep disabled managed intent without unsafe native setters or cleanup re-admission. Rollback
+keep disabled managed intent without unsafe native setters or cleanup re-admission.
+Unpaid SafeConstraint reads return only a currently safe retained object; native
+builder serialization cannot dispose/recreate a removed constraint. Ownership
+target checks read native connection state directly without invoking builders. Rollback
 includes inventories even when unchanged at preparation time, plus native inventory
 caches, queues, phases and reactor capacity derived from fuel. Native inventory
 mutations through BeforeContentsChanged are refused while stock commit/rollback is

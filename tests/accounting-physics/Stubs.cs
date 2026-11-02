@@ -20,7 +20,9 @@ namespace Sandbox.Game.Entities {
  class MyEntities {internal static Dictionary<long,object> Entities=new();public static object GetEntityById(long id)=>Entities.GetValueOrDefault(id);}
 }
 namespace Sandbox.Game.Entities.Blocks {
+ class Connection {public ConnectionState Value;} class ConnectionState {public long? TopBlockId;}
  class MyMechanicalConnectionBlockBase {
+  public Connection m_connectionState=>new(){Value=new(){TopBlockId=Target}};
   public long EntityId;public bool MarkedForClose;public MyCubeGrid CubeGrid;public MyAttachableTopBlockBase TopBlock;public long? Target;
   HkConstraint constraint;
   public HkConstraint Constraint {get=>constraint;set {foreach(var o in Native.Owners.Where(o=>o.Contains(this)))o.Assign(this,value);constraint=value;} }

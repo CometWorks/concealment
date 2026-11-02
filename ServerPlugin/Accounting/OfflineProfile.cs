@@ -107,6 +107,9 @@ internal sealed class OfflineStorage
 	public int Priority, Mode; // battery: Auto=0, Recharge=1, Discharge=2; tank stockpile=1
 	public int PowerSink = -1;
 	public bool Pair, Enabled = true, Full;
+	// Native per-block creative mode can be true for an NPC in a Survival world.
+	// Missing on older profiles means finite; adapters refuse a conflicting native mode.
+	public bool Creative;
 	public double RechargeEfficiency = 1;
 	public double IdlePower = -1, OperationalPower;
 	public bool Transferring; // retained operational demand, reset by native flow/working callbacks

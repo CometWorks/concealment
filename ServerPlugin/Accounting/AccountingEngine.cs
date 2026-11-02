@@ -52,6 +52,7 @@ internal static partial class AccountingEngine
 		foreach (var entry in entries)
 		{
 			OfflineInterval.ValidateSettlement(entry.Profile, Host.Cluster, authority);
+			ValidateBatteryModes(entry.Profile, entities);
 		}
 		var paths = entries.ToDictionary(e => e.Profile, e => ReadSunPath(e.Profile, wake));
 		var admitted = new List<OfflineProfile>();
@@ -274,10 +275,30 @@ internal static partial class AccountingEngine
 		return [];
 	}
 
+	private static void ValidateBatteryModes(OfflineProfile profile, IDictionary<long, MyObjectBuilder_EntityBase> entities)
+	{
+		if (profile.Creative) return; // Existing whole-world Creative policy is separate.
+		var batteries = profile.Members.SelectMany(id => entities.TryGetValue(id, out var entity) && entity is MyObjectBuilder_CubeGrid grid
+			? grid.CubeBlocks.OfType<MyObjectBuilder_BatteryBlock>().Select(b => (Grid: grid, Battery: b))
+			: Enumerable.Empty<(MyObjectBuilder_CubeGrid Grid, MyObjectBuilder_BatteryBlock Battery)>()).ToDictionary(b => b.Battery.EntityId);
+		foreach (var store in profile.Storage.Where(s => s.Kind == "Battery"))
+		{
+			if (!batteries.TryGetValue(store.Block, out var saved)) throw new InvalidDataException("Battery absent from saved group");
+			var b = saved.Battery;
+			// Same predicate as MyTerminalBlock.IsCreativeModeEnabled, evaluated on
+			// the immutable builders before Cluster instantiates any native entity.
+			bool creative = MySession.Static.CreativeMode || saved.Grid.IsNpcSpawnedGrid && !b.IsSurvivalModeForced
+				&& Sandbox.Game.Multiplayer.Sync.Players.IdentityIsNpc(b.Owner)
+				&& (b.Owner == b.BuiltBy || Sandbox.Game.Multiplayer.Sync.Players.IdentityIsNpc(b.BuiltBy));
+			if (store.Creative != creative) throw new InvalidDataException("Battery creative mode missing or changed; retaining unpaid profile");
+		}
+	}
+
 	/// <summary>Validate and prepare every write before touching any builder. IDs, stacks and all
 	/// item metadata that the model does not own survive; new products receive fresh inventory IDs.</summary>
 	internal static void Commit(OfflineProfile before, OfflineProfile after, IDictionary<long, MyObjectBuilder_EntityBase> entities)
 	{
+		ValidateBatteryModes(before, entities);
 		var blocks = before.Members.SelectMany(id => ((MyObjectBuilder_CubeGrid)entities[id]).CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
 		var writes = new List<Action>();
 		for (int i = 0; i < after.Inventories.Count; i++)

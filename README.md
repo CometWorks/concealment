@@ -114,6 +114,13 @@ checkpoint is quarantined without overwriting stocks or revealing the group.
 Keep the complete world and the matching plugin together for backup or rollback.
 Old binaries cannot interpret new claims; downgrade only with a pre-migration world.
 
+Battery profiles retain the native block's creative mode, including NPC batteries
+in Survival worlds. Those batteries supply power without draining; Auto/Recharge
+refill on their captured native 100-update phase. Other batteries, production and
+fuel remain in the same paid resource budget. Older finite profiles remain readable.
+An older unpaid NPC profile without the correct mode is refused with its original
+claim/stocks retained; it is not silently reinterpreted or charged as Survival.
+
 `ConcealmentBanks.jsonl` is immutable migration provenance. Existing positive banks
 drain using the original configured native production/power multiplier. They create
 no new grants and exclude the entire physical/logical accounting group from new

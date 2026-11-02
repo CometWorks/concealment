@@ -202,6 +202,7 @@ internal static partial class AccountingEngine
 				p.Storage.Add(new() { Block = block.EntityId, Kind = "Battery", Resource = Resource(MyResourceDistributorComponent.ElectricityId, block),
 					Amount = battery.CurrentStoredPower, Capacity = battery.MaxStoredPower, MaxInput = d.RequiredPowerInput, InputConversion = 1.0 / 216000,
 					Mode = (int)battery.ChargeMode, Pair = true, Enabled = enabled, Full = battery.m_isFull, RechargeEfficiency = d.RechargeMultiplier,
+					Creative = battery.IsCreativeModeEnabled, TickFrames = battery.IsCreativeModeEnabled ? 100 : 0,
 					// MySession increments its counter after simulation; it names the next
 					// frame both at an Invoke capture and at the subsequent plugin update.
 					ElapsedFrames = Math.Clamp(MySession.Static.GameplayFrameCounter - 1 - battery.m_lastUpdateTime, 0, 100) });

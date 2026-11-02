@@ -129,7 +129,11 @@ internal static class OfflineModel
 			// Only a fast closed feedback cycle aliases the native storage sampler. Keep
 			// steady flow on the existing integral; finish any timer interval a cycle entered.
 			if (feedback?.Cycling == true)
-				foreach (var store in profile.Storage.Where(s => s.TickFrames > 0)) store.Sampling = true;
+				foreach (var store in profile.Storage.Where(s => s.TickFrames > 0 && !s.Creative)) store.Sampling = true;
+			// NPC creative batteries ignore delivered power. Auto/Recharge refill on
+			// their real Update100 phase even without input; Discharge never refills.
+			foreach (var store in profile.Storage.Where(s => s.Creative))
+				store.Sampling = store.Enabled && store.Mode != 2 && store.Amount < store.Capacity;
 
 			var changes = new Dictionary<(int Inventory, string Item), decimal>();
 			var storageRate = new double[profile.Storage.Count];
@@ -146,7 +150,7 @@ internal static class OfflineModel
 				var store = profile.Storage[i];
 				storageRate[i] += charging[i] * store.InputConversion - store.LeakPerFrame;
 				if (store.Kind == "Battery" && storageRate[i] > 0) storageRate[i] *= store.RechargeEfficiency;
-				if (store.Sampling) storageRate[i] = 0;
+				if (store.Sampling || store.Creative) storageRate[i] = 0;
 			}
 			double step = duration - elapsed;
 			foreach (var store in profile.Storage.Where(s => s.Sampling && s.Enabled))
@@ -306,7 +310,8 @@ internal static class OfflineModel
 						double[] phaseOutput = feedback?.SettlementOutput ?? output, phaseCharging = feedback?.SettlementCharging ?? charging;
 						float delivered = (float)profile.Sources.Select((source, index) => source.Storage == i ? phaseOutput[index] : 0).Sum();
 						float received = (float)phaseCharging[i];
-						float net = store.Mode == 2 ? -delivered : store.Mode == 1 ? received : received - delivered;
+						float net = store.Creative ? 3600f * (float)store.Capacity / 8f
+							: store.Mode == 2 ? -delivered : store.Mode == 1 ? received : received - delivered;
 						float delta = ((float)store.ElapsedFrames * (1f / 60f) * 1000f) * (net / 3600000f);
 						if (net > 0) delta *= (float)store.RechargeEfficiency;
 						// Replace only the cost of this native interval; its steady prefix
@@ -710,6 +715,8 @@ internal static class OfflineModel
 				|| !double.IsFinite(s.AccountedEnergy) || Math.Abs(s.AccountedEnergy) > s.Capacity + Epsilon
 				|| s.Sampling && s.TickFrames <= 0
 				|| s.TickFrames > 0 && s.Kind != "Battery"
+				|| s.Creative && (s.Kind != "Battery" || s.Resource != Electricity || s.TickFrames != 100 || s.Mode is < 0 or > 2
+					|| !double.IsFinite(s.RechargeEfficiency) || s.RechargeEfficiency < 0)
 				|| s.Capacity < 0 || !double.IsFinite(s.MaxInput) || s.MaxInput < 0 || !double.IsFinite(s.InputConversion) || s.InputConversion < 0)
 				throw new InvalidDataException($"Invalid offline reservoir {s.Block} ({s.Kind}): amount={s.Amount:R}, capacity={s.Capacity:R}");
 		foreach (var source in p.Sources)

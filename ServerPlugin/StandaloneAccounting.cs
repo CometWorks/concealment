@@ -81,8 +81,11 @@ internal sealed class StandaloneAccounting : IDisposable
         Patch(AccessTools.PropertySetter(typeof(Havok.HkConstraint), "ForceDisabled"), nameof(ConstraintForced), true);
         foreach (var type in typeof(MyMechanicalConnectionBlockBase).Assembly.GetTypes().Where(t => typeof(MyMechanicalConnectionBlockBase).IsAssignableFrom(t)))
         {
-            var initialize = type.GetMethod("UpdateOnceBeforeFrame", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
-            if (initialize != null) Patch(initialize, nameof(BeforePaidPhysics), true, nameof(AfterPaidPhysics));
+            foreach (string name in new[] { "UpdateOnceBeforeFrame", "UpdateBeforeSimulation" })
+            {
+                var initialize = type.GetMethod(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+                if (initialize != null) Patch(initialize, nameof(BeforePaidPhysics), true, nameof(AfterPaidPhysics));
+            }
         }
         // Native measurements are invoked only by this standalone host. Cluster
         // installs its own thin forwarding patches when it explicitly owns the core.
@@ -190,15 +193,19 @@ internal sealed class StandaloneAccounting : IDisposable
                 return;
             }
             if (!owner.paidPhysics.TryGetValue(__instance.EntityId, out var pending)) return;
-            if (ReferenceEquals(pending.Block, __instance)
-                && ((MyObjectBuilder_MechanicalConnectionBlock)__instance.GetObjectBuilderCubeBlock()).TopBlockId == pending.Target
-                && pending.State.Present == (__instance.Constraint != null)
-                && __instance.Constraint?.IsDisposed != true
-                && (__instance is not MyPistonBase piston || pending.State.Subparts.Present == (piston.m_subpartsConstraint != null) && piston.m_subpartsConstraint?.IsDisposed != true)
-                && !owner.physics.Any(p => p.UnpaidOwns(__instance.Constraint) || __instance is MyPistonBase part && p.UnpaidOwns(part.m_subpartsConstraint)))
+            bool sameTarget = ReferenceEquals(pending.Block, __instance)
+                && ((MyObjectBuilder_MechanicalConnectionBlock)__instance.GetObjectBuilderCubeBlock()).TopBlockId == pending.Target;
+            if (sameTarget)
             {
-                var deferred = MechanicalPhysics.RestorePaid(__instance, pending.State);
-                if (deferred != null) owner.physics.Add(deferred);
+                bool present = pending.State.Present == (__instance.Constraint != null) && __instance.Constraint?.IsDisposed != true;
+                if (!present && pending.State.Present && pending.Target is > 0 && MyEntities.GetEntityById(pending.Target.Value) != null) return;
+                if (__instance is MyPistonBase piston && pending.State.Subparts.Present && piston.m_subpartsConstraint == null) return;
+                if (present && (__instance is not MyPistonBase parts || pending.State.Subparts.Present == (parts.m_subpartsConstraint != null) && parts.m_subpartsConstraint?.IsDisposed != true)
+                    && !owner.physics.Any(p => p.UnpaidOwns(__instance.Constraint) || __instance is MyPistonBase part && p.UnpaidOwns(part.m_subpartsConstraint)))
+                {
+                    var deferred = MechanicalPhysics.RestorePaid(__instance, pending.State);
+                    if (deferred != null) owner.physics.Add(deferred);
+                }
             }
             owner.paidPhysics.TryRemove(__instance.EntityId, out _);
         }
@@ -652,6 +659,13 @@ internal sealed class StandaloneAccounting : IDisposable
             record.Concealed = false;
             record.Profiles = null; mutated = false;
             group.Physics?.AuthorizeRelease();
+            if (group.Physics?.DeferredRelease == true)
+            {
+                var states = group.Physics.Snapshot();
+                foreach (var piston in group.Grids.SelectMany(g => g.GetFatBlocks()).OfType<MyPistonBase>())
+                    if (states[piston.EntityId].Subparts?.InWorld == true)
+                        paidPhysics[piston.EntityId] = (piston, ((MyObjectBuilder_MechanicalConnectionBlock)piston.GetObjectBuilderCubeBlock()).TopBlockId, states[piston.EntityId]);
+            }
             releasingPhysics.Add(group); // excess beyond the host cap is forfeited, never banked
             if (group.Physics?.DeferredRelease != true) physics.Remove(group.Physics);
             foreach (var value in modeled) plugin.Log.Info("Standalone compensation {0}", JsonSerializer.Serialize(value.Result, OfflineProfile.Json));

@@ -20,7 +20,7 @@ static class Checks {
   var owner=new MechanicalPhysics(new[]{grid});Native.Owners.Add(owner);return(owner,piston);
  }
  public static void Main(){
-  var (o,b)=Make();Check(o.Intact);var saved=o.Snapshot();Check(saved[20].Enabled&&!saved[21].Enabled&&!saved[22].Present);o.ValidateComplete();o.AuthorizeRelease();o.Release();Check(b[0].Constraint.Enabled&&!b[1].Constraint.Enabled&&b[2].Constraint==null);Check(!b[0].Constraint.ForceDisabled&&!b[1].Constraint.ForceDisabled);
+  var (o,b)=Make();bool unauthorized=false;try{o.Release();}catch(InvalidOperationException){unauthorized=true;}Check(unauthorized&&o.Intact);Check(o.Intact);var saved=o.Snapshot();Check(saved[20].Enabled&&!saved[21].Enabled&&!saved[22].Present);o.ValidateComplete();o.AuthorizeRelease();o.Release();Check(b[0].Constraint.Enabled&&!b[1].Constraint.Enabled&&b[2].Constraint==null);Check(!b[0].Constraint.ForceDisabled&&!b[1].Constraint.ForceDisabled);
   (o,b)=Make();o.ValidateComplete();b[1].Constraint.Enabled=true;Check(!o.Intact&&!b[1].Constraint.Enabled&&b[1].Constraint.ForceDisabled);
   (o,b)=Make();var old=b[1].Constraint;var replacement=new HkConstraint();b[1].Constraint=replacement;replacement.Enabled=true;Check(!o.Intact&&!replacement.Enabled&&!old.Enabled);o.Hold();Check(old.ForceDisabled&&replacement.ForceDisabled);
   (o,b)=Make();b[2].Constraint=new();b[2].Constraint.Enabled=true;Check(!o.Intact&&!b[2].Constraint.Enabled);
@@ -34,6 +34,8 @@ static class Checks {
   (po,piston)=Piston();piston.m_subpartsConstraint.Enabled=true;Check(!po.Intact&&!piston.m_subpartsConstraint.Enabled);
   (po,piston)=Piston();var previous=piston.m_subpartsConstraint;piston.m_subpartsConstraint=new();po.Hold();Check(!po.Intact&&previous.ForceDisabled&&piston.m_subpartsConstraint.ForceDisabled);
   (po,piston)=Piston(true);po.RestoreStates(ps);po.Structural(piston,()=>{piston.m_subpartsConstraint=new(){InWorld=false,RigidBodyA=piston.CubeGrid.Physics.RigidBody,RigidBodyB=piston.m_subpartPhysics.RigidBody};po.Constructed(piston.m_subpartsConstraint);piston.Constraint=new();po.Assign(piston,piston.Constraint);});Check(po.Intact&&po.Snapshot()[40].Subparts.InWorld==true&&!piston.m_subpartsConstraint.InWorld);po.ValidateComplete();po.AuthorizeRelease();po.Release();Check(!piston.m_subpartsConstraint.Enabled);
+  Check(!po.ReleaseComplete);var deferred=piston.m_subpartsConstraint;deferred.InWorld=true;po.Added(deferred);Check(po.ReleaseComplete&&!deferred.Enabled&&!deferred.ForceDisabled);
+  var paid=MechanicalPhysics.RestorePaid(piston,ps[40]);Check(paid==null&&!piston.m_subpartsConstraint.Enabled);
   Console.WriteLine($"PASS {count} actual-owner state/absence/replacement/disposal/exception/durable/required-field checks; inert Havok");
  }
 }

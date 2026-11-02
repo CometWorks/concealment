@@ -92,8 +92,10 @@ public sealed partial class Probe
         if (!mixedCapture) return;
         var grids = (IEnumerable<MyCubeGrid>)__0.GetType().GetProperty("Grids").GetValue(__0);
         var bases = grids.SelectMany(g => g.GetFatBlocks<MyMechanicalConnectionBlockBase>()).Where(b => b.Constraint != null).OrderBy(b => b.EntityId).ToArray();
-        if (bases.Length != 2) return;
-        bases[1].Constraint.Enabled = false;
+        if (bases.Length == 1 && bases[0] is MyPistonBase piston)
+            piston.m_subpartsConstraint.Enabled = false;
+        else if (bases.Length == 2) bases[1].Constraint.Enabled = false;
+        else return;
         mixedCapture = false;
         FaultTrace("mixed-original-before-hold");
     }

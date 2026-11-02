@@ -29,10 +29,15 @@ internal static class OfflineModel
 		}
 		long requested = wakeFrame - profile.SimulatedThrough;
 		long frames = Math.Min(requested, maxFrames);
+		if (frames > 0 && profile.Schema == OfflineProfile.ClusterSchema && profile.SunPeriodFrames > 0 && profile.Sources.Any(s => s.Curve is { Length: > 1 })
+			&& (profile.SunPath == null || profile.SunPath.Epoch != profile.ClockEpoch || profile.SunPath.From != profile.SimulatedThrough
+				|| profile.SunPath.Through != checked(profile.SimulatedThrough + frames)))
+			throw new InvalidDataException("Exact native-work/sun path is required before environmental simulation");
 		double engineFramesPerClockFrame = profile.ClockFrameSeconds * 60;
 		double duration = frames * engineFramesPerClockFrame;
 		var result = new OfflineResult { Group = profile.Group, FromFrame = profile.SimulatedThrough, Frames = frames,
-			CompensatedTo = wakeFrame, Confidence = profile.Confidence, Capped = requested > frames, ClockMigration = migration };
+			CompensatedTo = wakeFrame, Confidence = profile.Confidence, Capped = requested > frames, ClockMigration = migration,
+			ClockDomain = profile.ClockDomain, ClockEpoch = profile.ClockEpoch, ClockGeneration = profile.ClockGeneration };
 		var before = Totals(profile);
 		double energy = profile.Storage.Where(s => s.Kind is "Battery" or "Jump").Sum(s => s.Amount);
 		if (profile.Creative)
@@ -65,7 +70,9 @@ internal static class OfflineModel
 				bool wantsPower = production.Enabled && (production.Refinery ? choice[i] != null : production.Queue.Count > 0);
 				if (production.PowerSink >= 0) required[production.PowerSink] = !production.Enabled ? 0 : wantsPower ? production.OperationalPower : production.IdlePower;
 			}
-			double angleFrame = profile.SunFrame + (profile.SimulatedThrough - profile.FrozenFrame) + elapsed / engineFramesPerClockFrame;
+			double address = profile.SimulatedThrough + elapsed / engineFramesPerClockFrame;
+			double angleFrame = profile.SunPath != null ? profile.SunPath.Angle(profile, address)
+				: profile.SunFrame + (profile.SimulatedThrough - profile.FrozenFrame) + elapsed / engineFramesPerClockFrame;
 			double[] maximum = profile.Sources.Select(s => Maximum(profile, s, angleFrame)).ToArray();
 			double[] input = new double[required.Length], output = new double[maximum.Length], charging = new double[profile.Storage.Count];
 			bool[] workingStorage = profile.Storage.Select(s => s.Enabled).ToArray();
@@ -156,7 +163,8 @@ internal static class OfflineModel
 				int count = profile.Sources.Where(s => s.Curve is { Length: > 1 }).Max(s => s.Curve.Length);
 				double width = profile.SunPeriodFrames / count;
 				double position = SunPosition(angleFrame, profile.SunPeriodFrames, count);
-				step = Math.Min(step, (Math.Floor(position) + 1 - position) * width * engineFramesPerClockFrame);
+				step = Math.Min(step, profile.SunPath == null ? (Math.Floor(position) + 1 - position) * width * engineFramesPerClockFrame
+					: profile.Sources.Where(s => s.Curve is { Length: > 1 }).Min(s => profile.SunPath.UntilBinChange(profile, address, s.Curve.Length)));
 			}
 			for (int i = 0; i < choice.Length; i++)
 			{
@@ -669,8 +677,13 @@ internal static class OfflineModel
 
 	internal static void ValidateClock(OfflineProfile p)
 	{
-		if (p.Schema is not (1 or OfflineProfile.CurrentSchema) || p.SimulatedThrough < p.FrozenFrame || p.FrozenFrame < 0
+		if (p.Schema is not (1 or OfflineProfile.CurrentSchema or OfflineProfile.ClusterSchema) || p.SimulatedThrough < p.FrozenFrame || p.FrozenFrame < 0
 			|| (p.Schema == 1 ? p.ClockFrameSeconds is not (.016 or (1.0 / 60)) || p.SimulatedThrough != p.FrozenFrame : p.ClockFrameSeconds != 1.0 / 60)
+			|| (p.Schema == OfflineProfile.ClusterSchema
+				? !Guid.TryParseExact(p.ClockEpoch, "D", out _) || p.ClockDomain is not ("ClusterLocal" or "ClusterAuthority")
+					|| !p.SunClockTicks.HasValue || p.SunClockTicks < 0
+					|| (p.ClockDomain == "ClusterAuthority" ? p.ClockGeneration <= 0 : p.ClockGeneration != 0)
+				: p.ClockDomain != null || p.ClockEpoch != null || p.ClockGeneration != 0)
 			|| !double.IsFinite(p.ResourceFrameRemaining) || p.ResourceFrameRemaining <= 0 || p.ResourceFrameRemaining > 1
 			|| !double.IsFinite(p.SunFrame) || !double.IsFinite(p.SunPeriodFrames) || p.SunPeriodFrames < 0) throw new InvalidDataException("Invalid offline profile clock/schema");
 	}

@@ -31,10 +31,10 @@ namespace Concealment.Accounting;
 internal static partial class AccountingEngine
 {
 	private static readonly Dictionary<long, OfflineResult> Results = new();
-	internal static long Frame => checked((long)Math.Floor(Host.ClockMilliseconds() / 16));
+	internal static long Frame => Host.NativeFrame != null ? Host.NativeFrame() : checked((long)Math.Floor(Host.ClockMilliseconds() / 16));
 	internal const long FramesPerAuthorityHour = 3600000 / 16;
-	// Both hosts address elapsed WORLD time in 16 ms clock units. Standalone's
-	// native resource phase is 1/60 s per engine frame; it is not the elapsed cap.
+	// Native world time advances 16ms per completed update. Resource rates use
+	// 1/60s per update; Cluster settles separately in durable WA work addresses.
 	internal static long MaxFrames => checked(HostSettings.GetInt("offline.compensateMaxHours") * FramesPerAuthorityHour);
 
 	/// <summary>Runs once, at the shared recovery seam, before any entity is instantiated. The source
@@ -43,32 +43,73 @@ internal static partial class AccountingEngine
 		IEnumerable<(OfflineProfile Profile, HashSet<long> Members)> profiles)
 	{
 		if (!HostSettings.GetBool("offline.compensate")) return;
-		long wake = Frame;
-		foreach (var entry in profiles)
+		var entries = profiles.ToArray();
+		if (entries.Length == 0) return;
+		var authority = Host.Cluster ? Host.AuthorityClock() : default;
+		long wake = Host.Cluster ? authority.Frame : Frame;
+		// Validate every timebase before any group can commit or thaw. A Skipped
+		// result is not a safe response to ambiguous entitlement coordinates.
+		foreach (var entry in entries)
+		{
+			OfflineInterval.ValidateSettlement(entry.Profile, Host.Cluster, authority);
+		}
+		var paths = entries.ToDictionary(e => e.Profile, e => ReadSunPath(e.Profile, wake));
+		var admitted = new List<OfflineProfile>();
+		foreach (var entry in entries)
 		{
 			var profile = entry.Profile;
-			// An ambiguous clock must retain the immutable Final for recovery retry,
-			// rather than thawing unpaid stocks and dropping its profile on the next save.
-			OfflineModel.ValidateClock(profile);
 			try
 			{
 				if (profile.Members.Any(id => !entry.Members.Contains(id) || !entities.ContainsKey(id)))
 					throw new InvalidDataException("incomplete logical group in recovery cover");
 				if (profile.ContentHash != ContentHash(profile.Definitions)) throw new InvalidDataException("content mismatch");
-				var (model, result) = ModelForHost(profile, wake);
+				admitted.Add(profile);
+			}
+			catch (Exception e) { Skipped(profile, e); }
+		}
+		// Ordered paths can require more events than a scalar clock. Any failed
+		// schema3 computation must retain its entire unpaid Final, not thaw a
+		// partially computed interval. Prepare all such results before native writes.
+		var prepared = admitted.Where(p => p.Schema == OfflineProfile.ClusterSchema)
+			.ToDictionary(p => p, p => ModelWithPath(p, wake, paths[p]));
+		foreach (var profile in admitted)
+		{
+			try
+			{
+				var (model, result) = prepared.TryGetValue(profile, out var value) ? value : ModelWithPath(profile, wake, paths[profile]);
+				result.WakeClockGeneration = Host.Cluster ? authority.Generation : 0;
 				Commit(profile, model, entities);
 				Results[profile.Group] = result;
 				MyLog.Default?.WriteLineAndConsole("[ClusterPlugin] offline compensation " + JsonSerializer.Serialize(result, OfflineProfile.Json));
 			}
 			catch (Exception e)
 			{
-				Results[profile.Group] = new() { Group = profile.Group, FromFrame = profile.SimulatedThrough, Skipped = e.Message, Confidence = "Frozen" };
-				MyLog.Default?.WriteLineAndConsole("[ClusterPlugin] offline compensation skipped group=" + profile.Group + ": " + e.Message);
+				Skipped(profile, e);
 			}
 		}
 	}
 
+	private static void Skipped(OfflineProfile profile, Exception error)
+	{
+		Results[profile.Group] = new() { Group = profile.Group, FromFrame = profile.SimulatedThrough, Skipped = error.Message, Confidence = "Frozen",
+			ClockDomain = profile.ClockDomain, ClockEpoch = profile.ClockEpoch, ClockGeneration = profile.ClockGeneration };
+		MyLog.Default?.WriteLineAndConsole("[ClusterPlugin] offline compensation skipped group=" + profile.Group + ": " + error.Message);
+	}
+
 	internal static (OfflineProfile Model, OfflineResult Result) ModelForHost(OfflineProfile profile, long wake)
+		=> ModelWithPath(profile, wake, ReadSunPath(profile, wake));
+
+	private static SunWorkPath ReadSunPath(OfflineProfile profile, long wake)
+	{
+		OfflineModel.ValidateClock(profile);
+		if (profile.Schema != OfflineProfile.ClusterSchema) return null;
+		bool rotating = MySession.Static.Settings.EnableSunRotation;
+        if (!rotating || !profile.Sources.Any(s => s.Curve is { Length: > 1 }) || wake <= profile.SimulatedThrough || MaxFrames == 0) return null;
+		long through = checked(profile.SimulatedThrough + Math.Min(wake - profile.SimulatedThrough, MaxFrames));
+		return SunWorkPath.Read(Host.SunPath(profile.ClockDomain, profile.ClockEpoch, profile.SimulatedThrough, through), profile.ClockEpoch, profile.SimulatedThrough, through);
+	}
+
+	private static (OfflineProfile Model, OfflineResult Result) ModelWithPath(OfflineProfile profile, long wake, SunWorkPath path)
 	{
 		if (profile.ContentHash != ContentHash(profile.Definitions)) throw new InvalidDataException("content mismatch");
 		var model = JsonSerializer.Deserialize<OfflineProfile>(JsonSerializer.Serialize(profile, OfflineProfile.Json), OfflineProfile.Json);
@@ -78,6 +119,7 @@ internal static partial class AccountingEngine
 			model.SunPeriodFrames = period;
 			if (model.Confidence == "Exact") model.Confidence = "Approximate";
 		}
+		model.SunPath = path;
 		return (model, OfflineModel.Simulate(model, wake, MaxFrames));
 	}
 
@@ -89,8 +131,21 @@ internal static partial class AccountingEngine
 		if (profiles == null) return [];
 		return (JsonSerializer.Deserialize<OfflineProfile[]>(profiles, OfflineProfile.Json) ?? []).Select(p =>
 		{
+			OfflineModel.ValidateClock(p);
 			if (p.ContentHash != ContentHash(p.Definitions)) return new OfflineResult { Group = p.Group, Skipped = "content mismatch", Confidence = "Frozen" };
-			return OfflineModel.Simulate(p, checked(p.SimulatedThrough + (long)(hours * FramesPerAuthorityHour)), MaxFrames);
+			long wake = checked(p.SimulatedThrough + (long)(hours * FramesPerAuthorityHour));
+			try
+			{
+				p.SunPath = ReadSunPath(p, wake);
+			}
+			catch (Exception e) when (p.Schema == OfflineProfile.ClusterSchema && e is InvalidDataException or InvalidOperationException or System.Net.Http.HttpRequestException)
+			{
+				// A requested future sun/work path is not evidence of an actual
+				// interval. Use the existing skipped-result contract, never invent one.
+				return new OfflineResult { Group = p.Group, FromFrame = p.SimulatedThrough, Skipped = "WA sun/work prediction unavailable: " + e.Message,
+					Confidence = "Frozen", ClockDomain = p.ClockDomain, ClockEpoch = p.ClockEpoch, ClockGeneration = p.ClockGeneration };
+			}
+			return OfflineModel.Simulate(p, wake, MaxFrames);
 		}).ToArray();
 	}
 

@@ -17,7 +17,7 @@ namespace Concealment.Accounting;
 // assembly names and built plugins without linking a second copy of the model.
 public static class AccountingApi
 {
-    public const int Contract = 2;
+    public const int Contract = 3;
     private static bool configured;
     private static string owner;
     public static void Configure(string host, Dictionary<string, object> callbacks)
@@ -30,8 +30,15 @@ public static class AccountingApi
             if (host == "Cluster") return;
         }
         Host.ClockFrameSeconds = (double)callbacks["clockFrameSeconds"];
-        if (Host.ClockFrameSeconds != 1.0 / 60) throw new ArgumentException("Accounting contract 2 requires one native frame per world-clock unit; update the host adapter");
+        if (Host.ClockFrameSeconds != 1.0 / 60) throw new ArgumentException("Accounting contract 3 requires native resource-frame units; update the host adapter");
         Host.ClockMilliseconds = (Func<double>)callbacks["clock"];
+        Host.NativeFrame = host == "Cluster" ? (Func<long>)callbacks["nativeFrame"] : null;
+        Host.NativeEpoch = host == "Cluster" ? (Func<string>)callbacks["nativeEpoch"] : null;
+        Host.AuthorityClock = host == "Cluster" ? (Func<(string Epoch, long Frame, long Generation, long SunTicks)>)callbacks["authorityClock"] : null;
+        Host.SunPath = host == "Cluster" ? (Func<string, string, long, long, byte[]>)callbacks["sunPath"] : null;
+        Host.SunClock = host == "Cluster" ? (Func<long>)callbacks["sunClock"] : null;
+        if (host == "Cluster" && (Host.NativeFrame == null || Host.NativeEpoch == null || Host.AuthorityClock == null || Host.SunPath == null || Host.SunClock == null))
+            throw new ArgumentException("Accounting contract 3 requires explicit native, authority and sun/work callbacks");
         Host.Setting = (Func<string, string>)callbacks["setting"];
         Host.CanProfile = (Func<ulong, uint, bool>)callbacks["admit"];
         Host.Generation = (Func<ulong, uint>)callbacks["generation"];
@@ -56,6 +63,11 @@ public static class AccountingApi
         // Persistence can outlive scheduling; canceled jobs and detached hosts
         // must not retain callable delegates to the old world.
         Host.ClockMilliseconds = null;
+        Host.NativeFrame = null;
+        Host.NativeEpoch = null;
+        Host.AuthorityClock = null;
+        Host.SunPath = null;
+        Host.SunClock = null;
         Host.Setting = null;
         Host.CanProfile = null;
         Host.Generation = null;
@@ -76,6 +88,16 @@ public static class AccountingApi
     {
         RequireHost();
         var profiles = quick ? AccountingEngine.CaptureForDrain(scope, groups, occluders) : AccountingEngine.CaptureFor(scope, groups, occluders);
+        if (profiles != null && Host.Cluster)
+        {
+            // Capture and serialization run on the game thread. This changes the
+            // origin of an unpaid interval, never its stocks, native phase or rate.
+            var clock = Host.AuthorityClock();
+            foreach (var p in profiles)
+            {
+                OfflineInterval.Freeze(p, Host.NativeEpoch(), clock);
+            }
+        }
         return profiles == null ? null : JsonSerializer.SerializeToUtf8Bytes(profiles, OfflineProfile.Json);
     }
     public static void Apply(IDictionary<long, MyObjectBuilder_EntityBase> entities, byte[][] sections, long[][] covers)
@@ -88,7 +110,7 @@ public static class AccountingApi
     internal static OfflineProfile[] Read(byte[] profiles) => profiles == null ? []
         : JsonSerializer.Deserialize<OfflineProfile[]>(profiles, OfflineProfile.Json) ?? throw new InvalidDataException("Missing profiles");
     public static long? FrozenFrame(byte[] profiles) => Read(profiles).FirstOrDefault()?.FrozenFrame;
-    public static object Summary(byte[] profiles) => Read(profiles).Select(p => new { p.Group, p.Confidence, p.Unknowns }).ToArray();
+    public static object Summary(byte[] profiles) => Read(profiles).Select(p => new { p.Group, p.Confidence, p.Unknowns, p.ClockDomain, p.ClockEpoch, p.ClockGeneration }).ToArray();
     public static object Status() { RequireHost(); return AccountingEngine.Status(); }
     public static object Profiles(long[] members) => AccountingEngine.Profiles(members);
     public static object AdminRead(long[] members, byte[] profiles) => AccountingEngine.AdminRead(members, profiles == null ? null : Read(profiles));

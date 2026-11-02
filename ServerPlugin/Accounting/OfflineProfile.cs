@@ -11,6 +11,13 @@ namespace Concealment.Accounting;
 internal sealed class OfflineProfile
 {
 	public const int CurrentSchema = 2;
+	public const int ClusterSchema = 3;
+	// Schema 1/2 retain their native-world16ms mathematical contract. Cluster
+	// schema 3 explicitly separates a local live capture from a durable WA interval.
+	public string ClockDomain, ClockEpoch;
+	public long ClockGeneration;
+	public long? SunClockTicks;
+	[JsonIgnore] internal SunWorkPath SunPath;
 	public static readonly JsonSerializerOptions Json = new() { IncludeFields = true };
 	[JsonRequired] public int Schema = CurrentSchema;
 	public long Group;
@@ -147,6 +154,8 @@ internal sealed class OfflineResult
 	public bool Capped;
 	public string Confidence, Skipped;
 	public string ClockMigration;
+	public string ClockDomain, ClockEpoch;
+	public long ClockGeneration, WakeClockGeneration;
 	public double EnergyDelta;
 	public Dictionary<string, decimal> ItemDelta = [];
 	public Dictionary<long, double> ProducerEnergyMWh = [], ConsumerEnergyMWh = [], StorageInputEnergyMWh = [];

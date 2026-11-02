@@ -36,6 +36,13 @@ internal static partial class AccountingEngine
 			ClockFrameSeconds = Host.ClockFrameSeconds, Creative = MySession.Static.CreativeMode, Simplified = MySession.Static.SimplifiedSimulation,
 			SunFrame = MySession.Static.ElapsedGameTime.TotalMilliseconds / 16,
 			SunPeriodFrames = MySession.Static.Settings.EnableSunRotation ? MySession.Static.Settings.SunRotationIntervalMinutes * 60000.0 / 16 : 0 };
+		if (Host.Cluster)
+		{
+			p.Schema = OfflineProfile.ClusterSchema;
+			p.ClockDomain = "ClusterLocal";
+			p.ClockEpoch = Host.NativeEpoch();
+			p.SunClockTicks = Host.SunClock();
+		}
 		var definitions = new HashSet<string>(blocks.Select(b => b.BlockDefinition.Id.ToString()));
 		var inventoryIndices = new Dictionary<MyInventory, int>();
 		var blockSinks = new HashSet<MyResourceSinkComponent>();

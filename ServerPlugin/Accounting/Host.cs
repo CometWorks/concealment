@@ -11,6 +11,12 @@ namespace Concealment.Accounting;
 internal static class Host
 {
     internal static Func<double> ClockMilliseconds;
+    internal static Func<long> NativeFrame;
+    internal static Func<string> NativeEpoch;
+    internal static Func<(string Epoch, long Frame, long Generation, long SunTicks)> AuthorityClock;
+    internal static Func<string, string, long, long, byte[]> SunPath;
+    internal static Func<long> SunClock;
+    internal static bool Cluster => AuthorityClock != null;
     internal static double ClockFrameSeconds = 1.0 / 60;
     internal static Func<string, string> Setting;
     internal static Func<ulong, uint, bool> CanProfile;

@@ -128,18 +128,25 @@ A nonblank `CLUSTER_GATEWAY_REGISTRY` fixes configured Cluster mode before manag
 or hooks are created. All autonomous Concealment scans, dynamic suppression, jobs,
 boost migration, commands and disposal reveal are inactive in that mode, regardless
 of connection/provider health or saved settings. Mode changes require a restart.
-Cluster explicitly invokes accounting contract 2, owns scheduling, authority clocks,
+Cluster explicitly invokes accounting contract 3, owns scheduling, authority clocks,
 partition Finals and application, and loads this same plugin implementation.
 No Cluster dependency or scheduler is required for standalone use.
 
-Profile schema 2 maps each saved 16 ms world-clock unit to one native resource
+Standalone profile schema 2 maps each saved 16 ms world-clock unit to one native resource
 frame; resource seconds remain 1/60. Unpaid schema-1 profiles with either known
 clock discriminator (`.016` or `1/60`) migrate on a detached copy, with an explicit
 `ClockMigration` result. Frame addresses, stocks, native timer phases and sun
 time stay intact. The immutable original remains the retry basis; already paid
 receipts earn no second interval. Partly advanced schema-1 profiles and unknown
 clocks are refused because their stock/phase history cannot be reconstructed.
-Cluster propagates that refusal before recovery can instantiate entities or
+Cluster schema 3 separately identifies local completed-native-update observations and
+durable WA simulation intervals by epoch and generation. A fresh unpaid freeze translates
+to WA coordinates without altering native stock or timer phases. Wake uses actual WA
+native progress, excluding wall delay and downtime. Ordered, durable WA sun/work runs
+preserve cached geometric generation and manual sun-step-at-end semantics. Old Cluster
+schema-1/2 profiles do not identify native versus initialized extrapolated addresses and
+are refused rather than silently reinterpreted; the immutable Final retains the claim.
+Cluster propagates incompatible-state refusal before recovery can instantiate entities or
 replace the immutable Final; standalone persists its group rejection.
 Keep the corrected Cluster adapter and pinned core together. Contract-1 adapters
 are incompatible; rollback requires the matching pre-upgrade world/Final/package,
@@ -196,9 +203,10 @@ representation on both unpaid and paid history. An unpaid schema-2 root missing 
 history is quarantined before reconstruction, with its raw evidence retained; child
 rows need no duplicate map. Schema-1 history with ForceDisabled=true
 is ambiguous and is quarantined without guessing; unforced history safely migrates.
-Genuinely old claims without history retain observation-only compatibility. It preserves originally disabled
-constraints across native saves/reloads; it does not change shared profile schema 2 or
-accounting contract 2. Older claims have no historical ephemeral-constraint state. They
+Genuinely old claims without history retain observation-only compatibility. Originally disabled
+constraints stay disabled across native saves/reloads. Mechanical record schema 2 is
+independent of accounting contract 3 and its shared profile time domains.
+Older claims have no historical ephemeral-constraint state. They
 retain their supported native reconstruction path: record the actual native requested
 state observed during reconstruction, including a native callback leaving it disabled.
 Paid saves snapshot the current flags per grid and bind them to that checkpoint's

@@ -34,6 +34,6 @@ class ConcealmentRuntime { public static ConcealmentRuntime Instance=new(); publ
 
 // Native saved-link reconstruction is exercised by NativeProbe. This probe
 // supplies already established groups and tests the recovery/retention owner.
-partial class Subject { private void RestoreMechanicalLinks((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group, MechanicalPhysics owner) {} }
+partial class Subject { int StructuralCalls; private void RestoreMechanicalLinks((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group, MechanicalPhysics owner) { StructuralCalls++; } }
 
 class MechanicalPhysics { public static long? Target(MyMechanicalConnectionBlockBase b)=>b.GetObjectBuilderCubeBlock().TopBlockId; public class State { public int IntentVersion=1;public bool Present,Enabled,ForceDisabled; public bool? InWorld; public State Subparts; } public static Dictionary<long,State> SnapshotLive(MyCubeGrid grid)=>new(); public MechanicalPhysics(IEnumerable<MyCubeGrid> g){} public void RestoreStates(Dictionary<long,State> states){} public void Hold(){} public void ValidateComplete(){} public Dictionary<long,State> Snapshot()=>new(); }

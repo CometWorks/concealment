@@ -18,9 +18,10 @@ partial class Subject {
  static MyCubeGrid[] Grids(params long[] ids){var gs=ids.Select(id=>new MyCubeGrid{EntityId=id}).ToArray();foreach(var g in gs)MyEntities.Grids[g.EntityId]=g;MyCubeGridGroups.Static.Physical.Add(gs);MyCubeGridGroups.Static.Logical.Add(gs);return gs;}
  static ConcealGroup Group(MyCubeGrid[] grids)=>new(MyCubeGridGroups.Static.Physical.GetGroup(grids[0]));
  static string Raw(Record record)=>JsonSerializer.Serialize(record,OfflineProfile.Json);
- Record Row(long root,long[] members,string epoch,bool profile=false)=>new(){World="world",Epoch=epoch,Root=root,Members=members,Concealed=true,CheckpointTicks=MySession.Static.ElapsedGameTime.Ticks,Profiles=profile?[new(){Tag="original-unpaid-profile",Members=members}]:null};
+ Record Row(long root,long[] members,string epoch,bool profile=false)=>new(){World="world",Epoch=epoch,Root=root,Members=members,Concealed=true,CheckpointTicks=MySession.Static.ElapsedGameTime.Ticks,Profiles=profile?[new(){Tag="original-unpaid-profile",Members=members}]:null,Mechanical=profile?new():null};
  void Load(MyCubeGrid g,Record row)=>Restore(g,new(){Raw=Raw(row)});
  public void Run(){
+  RootHistory();
   var history="{\"Schema\":1,\"Mechanical\":{\"9\":{\"Present\":true,\"Enabled\":true,\"ForceDisabled\":false,\"Subparts\":null}}}";
   using(var migrated=JsonDocument.Parse(MigrateMechanicalHistory(history)))Check(migrated.RootElement.GetProperty("Mechanical").GetProperty("9").GetProperty("IntentVersion").GetInt32()==1,"unforced legacy history migrates known request");
   bool refused=false;try{MigrateMechanicalHistory(history.Replace("\"ForceDisabled\":false","\"ForceDisabled\":true"));}catch(InvalidDataException){refused=true;}Check(refused,"forced legacy history refuses ambiguous intent");
@@ -61,6 +62,47 @@ partial class Subject {
   Lifetime();
   EarlyStop();
   Console.WriteLine($"PASS {checks} exact-production recovery/admission/save/reload assertions; inert native collaborators");
+ }
+
+ void RootHistory(){
+  foreach(int schema in new[]{1,2})
+  foreach(string history in new[]{"missing","null","present"})
+  foreach(bool stopFirst in new[]{false,true}){
+   MyEntities.Grids.Clear();MyCubeGridGroups.Static=new();
+   bool reject=schema==2&&history!="present";
+   var grids=Grids(10,11);var unaffected=Grids(20,21);var subject=new Subject();
+   var root=subject.Row(10,[10,11],"root-history-unpaid",true);root.Schema=schema;
+   var node=System.Text.Json.Nodes.JsonNode.Parse(Raw(root));
+   if(history=="missing")node.AsObject().Remove("Mechanical");
+   if(history=="null")node["Mechanical"]=null;
+   string raw=node.ToJsonString();
+   subject.Restore(grids[0],new(){Raw=raw});
+   var child=subject.Row(10,[10,11],root.Epoch);child.Schema=schema;subject.Load(grids[1],child);
+   int links=subject.StructuralCalls;
+   if(stopFirst)subject.Stop();else subject.Update();
+   string label=$"schema{schema}/{history}/stop={stopFirst}";
+   Check(subject.plugin.Manager.Restored.Count==(reject?0:1),label+" expected recovery verdict");
+   Check(subject.StructuralCalls-links==(reject?0:1),label+" modern omission refused before structural reconstruction");
+   if(reject){
+    Check(subject.records[10].Mechanical==null,label+" no invented intent map on refusal");
+    Check(subject.records[11].Mechanical==null,label+" child row needs no duplicate history");
+    Check(subject.records.Values.All(r=>r.Rejected!=null&&r.Epoch==root.Epoch),label+" original unpaid records retained");
+    Check(subject.opaque[10]==raw,label+" malformed root retained byte-exact");
+    Check(grids.All(g=>g.Suppressed)&&unaffected.All(g=>!g.Suppressed),label+" entire closure held and unrelated group live");
+    Check(subject.Blocks(Group(grids))&&!subject.Admission(10,1)&&!subject.TryBegin(Group(grids),()=>throw new Exception("capture")),label+" no replacement claim");
+    for(int retry=0;retry<2;retry++){
+     MySession.Static.ElapsedGameTime+=TimeSpan.FromTicks(160000);
+     var builders=grids.Select(g=>{var b=new MyObjectBuilder_CubeGrid();subject.Save(g,b);return b;}).ToArray();
+     Check(builders[0].Raw==raw,label+" save retains malformed root exactly");
+     subject=new Subject();for(int i=0;i<grids.Length;i++)subject.Restore(grids[i],builders[i]);subject.Update();
+     Check(subject.plugin.Manager.Restored.Count==0&&subject.Blocks(Group(grids))&&grids.All(g=>g.Suppressed),label+" reload retains refusal/closure");
+     Check(subject.opaque[10]==raw,label+" reload retains original raw evidence");
+     Check(subject.records[11].Epoch==root.Epoch&&subject.records[11].Rejected!=null,label+" unpaid child survives retry");
+    }
+   }else{
+    Check(subject.records[10].Mechanical!=null&&subject.records[10].Rejected==null,label+" supported root history survives or legacy observation recorded");
+   }
+  }
  }
 
  void EarlyStop(){

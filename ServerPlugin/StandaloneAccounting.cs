@@ -352,8 +352,10 @@ internal sealed class StandaloneAccounting : IDisposable
         {
             var root = group.FirstOrDefault(r => r.Grid.EntityId == group.Key);
             var owner = Protect(group.Select(g => g.Grid));
+            bool missingHistory = root.Record?.Schema == 2 && root.Record.Mechanical == null;
             try
             {
+                if (missingHistory) throw new InvalidDataException("Missing modern root mechanical history");
                 owner.RestoreStates(root.Record?.Mechanical);
                 if (root.Record?.Profiles == null || root.Record.World != AccountingStock.World || root.Record.Profiles.Length == 0
                     || !root.Record.Members.Order().SequenceEqual(group.Select(g => g.Grid.EntityId).Order())
@@ -377,7 +379,8 @@ internal sealed class StandaloneAccounting : IDisposable
             catch (Exception e)
             {
                 owner.Hold();
-                if (root.Record != null) root.Record.Mechanical ??= owner.Snapshot();
+                if (root.Record?.Schema == 1) root.Record.Mechanical ??= owner.Snapshot();
+                if (missingHistory) opaque.TryAdd(root.Grid.EntityId, BlockBuilderEntry.Read(root.Builder, AccountingMetadata.AccountingKey));
                 RejectRecovery(group.ToArray(), e.Message);
                 plugin.Log.Error(e, "Accounting group {0} remains suspended; entitlement preserved", group.Key);
             }

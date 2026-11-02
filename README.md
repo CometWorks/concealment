@@ -192,7 +192,9 @@ required IntentVersion=1/Present/Enabled/ForceDisabled fields per base and pisto
 explicit subpart world-membership history. Missing subpart history in a new piston
 record is refused. Enabled records the managed requested flag independently of effective native Enabled,
 including when ForceDisabled masks it. Private standalone record schema 2 requires this
-representation on both unpaid and paid history. Schema-1 history with ForceDisabled=true
+representation on both unpaid and paid history. An unpaid schema-2 root missing its
+history is quarantined before reconstruction, with its raw evidence retained; child
+rows need no duplicate map. Schema-1 history with ForceDisabled=true
 is ambiguous and is quarantined without guessing; unforced history safely migrates.
 Genuinely old claims without history retain observation-only compatibility. It preserves originally disabled
 constraints across native saves/reloads; it does not change shared profile schema 2 or

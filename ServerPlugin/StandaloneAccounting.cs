@@ -535,7 +535,7 @@ internal sealed class StandaloneAccounting : IDisposable
             var modeled = record.Profiles.Select(p => AccountingEngine.ModelForHost(p, Frame)).ToArray();
             for (int i = 0; i < modeled.Length; i++) AccountingEngine.Commit(record.Profiles[i], modeled[i].Model, desired);
             var prepared = AccountingStockCommit.Prepare(group.Grids.ToArray(), desired, modeled.Select(m => m.Model).ToArray());
-            rollback = AccountingStockCommit.Prepare(group.Grids.ToArray(), original, record.Profiles);
+            rollback = AccountingStockCommit.Prepare(group.Grids.ToArray(), original, record.Profiles, restore: true);
             applying = true; mutated = true;
             foreach (var action in prepared.Write) { ValidateIdentity(); action(); ValidateIdentity(); }
             ValidateResult(desired);
@@ -552,8 +552,18 @@ internal sealed class StandaloneAccounting : IDisposable
         {
             if (rollback != null && mutated)
             {
-                try { foreach (var action in rollback.Write) action(); }
-                catch (Exception restore) { plugin.Log.Critical(restore, "Accounting rollback failed; group remains concealed"); }
+                foreach (var action in rollback.Write)
+                    try { action(); }
+                    catch (Exception restore) { plugin.Log.Critical(restore, "Accounting rollback write failed; group remains concealed"); }
+                ownSnapshot = true;
+                try
+                {
+                    if (AccountingStock.Fingerprint(AccountingStock.Builders(group.Grids).Values.Cast<MyObjectBuilder_CubeGrid>())
+                        != AccountingStock.Fingerprint(original.Values.Cast<MyObjectBuilder_CubeGrid>()))
+                        throw new InvalidDataException("Accounting rollback did not restore original stocks");
+                }
+                catch (Exception restore) { plugin.Log.Critical(restore, "Accounting rollback verification failed; group remains concealed"); }
+                finally { ownSnapshot = false; }
             }
             group.Physics?.Hold();
             record.Rejected = e.Message;

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 new Subject().Run();
 partial class Subject {
+ bool applying;
  readonly Plugin plugin=new(); readonly ConcurrentDictionary<long,Record> records=new(); readonly ConcurrentDictionary<long,string> opaque=new(); static Subject Current;
  static int checks;
  void RunCase(string name,Action<MyCubeGrid[],MyObjectBuilder_CubeGrid[],MyMechanicalConnectionBlockBase,MyAttachableTopBlockBase> alter,bool accept=false,bool piston=false){

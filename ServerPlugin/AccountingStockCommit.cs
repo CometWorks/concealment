@@ -28,7 +28,7 @@ namespace Shared.Concealment;
 internal static class AccountingStockCommit
 {
     internal sealed record Prepared(Action[] Write, Action[] Notify);
-    internal static Prepared Prepare(MyCubeGrid[] grids, Dictionary<long, MyObjectBuilder_EntityBase> builders, OfflineProfile[] models)
+    internal static Prepared Prepare(MyCubeGrid[] grids, Dictionary<long, MyObjectBuilder_EntityBase> builders, OfflineProfile[] models, bool restore = false)
     {
         var blocks = grids.SelectMany(g => g.GetFatBlocks()).ToDictionary(b => b.EntityId);
         var saved = builders.Values.Cast<MyObjectBuilder_CubeGrid>().SelectMany(g => g.CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
@@ -41,12 +41,19 @@ internal static class AccountingStockCommit
                 var live = block.GetInventory(inventory.Index) ?? throw new InvalidDataException("Live inventory is missing");
                 var candidates = AccountingEngine.Inventories(saved[inventory.Block]).ToArray();
                 var ob = candidates.FirstOrDefault(i => i.InventoryId == inventory.InventoryId) ?? candidates[inventory.Index];
-                if (AccountingStock.Xml(live.GetObjectBuilder()) == AccountingStock.Xml(ob)) continue;
+                if (!restore && AccountingStock.Xml(live.GetObjectBuilder()) == AccountingStock.Xml(ob)) continue;
                 var items = ob.Items.Select(i => new MyPhysicalInventoryItem { ItemId = i.ItemId, Amount = i.Amount, Scale = i.Scale, Content = i.PhysicalContent }).ToList();
                 var ids = items.Select(i => i.ItemId).ToHashSet();
                 if (ids.Count != items.Count) throw new InvalidDataException("Duplicate modeled item identity");
                 uint next = ob.nextItemId;
-                write.Add(() => { live.m_items = items; live.m_usedIds = ids; live.m_nextItemID = next; });
+                var mass = live.m_currentMass.Value; var volume = live.m_currentVolume.Value;
+                write.Add(() =>
+                {
+                    live.m_items = items; live.m_usedIds = ids; live.m_nextItemID = next;
+                    // Rollback must not rerun the notification that invalidated the
+                    // transaction. Restore its captured derived values silently.
+                    if (restore) { live.m_currentMass.m_value = mass; live.m_currentVolume.m_value = volume; }
+                });
                 notify.Add(() => { live.RefreshVolumeAndMass(); live.OnContentsChanged(); });
             }
             foreach (var store in profile.Storage)
@@ -57,7 +64,9 @@ internal static class AccountingStockCommit
                     case "Battery":
                         var battery = (MyBatteryBlock)block;
                         float energy = ((MyObjectBuilder_BatteryBlock)saved[store.Block]).CurrentStoredPower;
-                        write.Add(() => { battery.CurrentStoredPower = energy; battery.m_isFull.Value = store.Full; battery.m_lastUpdateTime = MySession.Static.GameplayFrameCounter - 1 - (int)store.ElapsedFrames; });
+                        bool full = restore ? battery.m_isFull.Value : store.Full;
+                        int lastUpdate = restore ? battery.m_lastUpdateTime : MySession.Static.GameplayFrameCounter - 1 - (int)store.ElapsedFrames;
+                        write.Add(() => { battery.CurrentStoredPower = energy; battery.m_isFull.Value = full; battery.m_lastUpdateTime = lastUpdate; if (restore) battery.m_storedPower.m_value = energy; });
                         notify.Add(() => battery.m_storedPower.Value = energy);
                         break;
                     case "Tank":
@@ -78,12 +87,30 @@ internal static class AccountingStockCommit
             {
                 var reactor = (MyReactor)blocks[source.Block];
                 if (reactor.m_timer == null) throw new InvalidDataException("Live fuel timer missing");
-                uint elapsed = checked((uint)(Math.Floor(source.FuelElapsedFrames / 100) * 100));
-                uint period = checked((uint)source.FuelTickFrames);
+                uint elapsed = restore ? reactor.m_timer.FramesFromLastTrigger : checked((uint)(Math.Floor(source.FuelElapsedFrames / 100) * 100));
+                uint period = restore ? reactor.m_timer.TimerTickInFrames : checked((uint)source.FuelTickFrames);
                 write.Add(() => { reactor.m_timer.FramesFromLastTrigger = elapsed; reactor.m_timer.TimerTickInFrames = period; });
             }
-            foreach (var production in profile.Production.Where(p => !p.Refinery))
+            foreach (var production in profile.Production)
             {
+                if (restore)
+                {
+                    var native = (MyProductionBlock)blocks[production.Block];
+                    var originalQueue = native.m_queue.ToList(); var originalItem = native.m_currentQueueItem; uint originalNext = native.m_nextItemId;
+                    var timer = native.m_timer; uint? elapsed = timer?.FramesFromLastTrigger, period = timer?.TimerTickInFrames;
+                    bool rebuild = native is MyRefinery refinery && refinery.m_queueNeedsRebuild;
+                    float progress = native is MyAssembler current ? current.CurrentProgress : 0;
+                    int index = native is MyAssembler indexed ? indexed.CurrentItemIndex : 0;
+                    write.Add(() =>
+                    {
+                        native.m_queue = originalQueue; native.m_currentQueueItem = originalItem; native.m_nextItemId = originalNext;
+                        if (timer != null) { timer.FramesFromLastTrigger = elapsed.Value; timer.TimerTickInFrames = period.Value; }
+                        if (native is MyRefinery refinery) refinery.m_queueNeedsRebuild = rebuild;
+                        if (native is MyAssembler assembler) { assembler.CurrentItemIndex = index; assembler.CurrentProgress = progress; }
+                    });
+                    continue;
+                }
+                if (production.Refinery) continue;
                 var assembler = (MyAssembler)blocks[production.Block];
                 var ob = (MyObjectBuilder_Assembler)saved[production.Block];
                 var queue = (ob.Queue ?? []).Select(q => new MyProductionBlock.QueueItem { Blueprint = MyDefinitionManager.Static.GetBlueprintDefinition(q.Id), Amount = q.Amount, ItemId = q.ItemId ?? 0 }).ToList();
@@ -97,7 +124,13 @@ internal static class AccountingStockCommit
                 var component = saved[upkeep.Block].ComponentContainer.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().Single();
                 // The bubble was removed while concealed. Restore paid credit/settings;
                 // native working/allocation and activation own any future protection.
-                write.Add(() => manager.Deserialize(component));
+                bool activating = manager.m_activating; var remaining = manager.m_timeLeft;
+                write.Add(() =>
+                {
+                    if (restore) manager.SafeZoneRemove_Server();
+                    manager.Deserialize(component);
+                    if (restore) { manager.m_activating = activating; manager.m_timeLeft = remaining; }
+                });
                 notify.Add(() =>
                 {
                     zone.ResourceSink.Update();

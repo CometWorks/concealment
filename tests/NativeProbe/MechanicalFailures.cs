@@ -125,7 +125,16 @@ public sealed partial class Probe
     }
     private static void ChangeMechanical(MyMechanicalConnectionBlockBase block, string mode)
     {
-        if (mode == "enable") block.Constraint.Enabled = true;
+        if (mode == "subpart-enable") ((MyPistonBase)block).m_subpartsConstraint.Enabled = true;
+        else if (mode == "subpart-replace")
+        {
+            var piston = (MyPistonBase)block;
+            var replacement = new HkConstraint(block.CubeGrid.Physics.RigidBody, piston.m_subpartPhysics.RigidBody, new HkFixedConstraintData());
+            piston.m_subpartsConstraint = replacement;
+            block.CubeGrid.Physics.AddConstraint(replacement);
+            replacement.Enabled = true;
+        }
+        else if (mode == "enable") block.Constraint.Enabled = true;
         else if (mode == "unforce") block.Constraint.ForceDisabled = false;
         else if (mode == "detach") ((Sandbox.ModAPI.Ingame.IMyMechanicalConnectionBlock)block).Detach();
         else if (mode == "replace" || mode == "dispose" || mode == "add")

@@ -7,8 +7,11 @@ class Production { public bool Ready=>true; public bool Blocks(IEnumerable<MyCub
 class Log { public int Errors; public void Error(Exception e,string s,long n){Errors++;} public void Warning(Exception e,string s,params object[] args){} }
 class MySession { public static MySession Static=new(); public bool Ready=true; public TimeSpan ElapsedGameTime=TimeSpan.FromTicks(16000000); }
 class MyObjectBuilder_EntityBase {}
-class MyObjectBuilder_CubeGrid : MyObjectBuilder_EntityBase { public string Raw; public MyObjectBuilder_CubeGrid Clone()=>new(){Raw=Raw}; }
+class MyObjectBuilder_CubeGrid : MyObjectBuilder_EntityBase { public List<MyObjectBuilder_MechanicalConnectionBlock> CubeBlocks=[]; public string Raw; public MyObjectBuilder_CubeGrid Clone()=>new(){Raw=Raw}; }
 class OfflineProfile { public string Tag; public long[] Members=[]; public static JsonSerializerOptions Json=new(){IncludeFields=true}; }
+class MyObjectBuilder_MechanicalConnectionBlock { public long EntityId; public long? TopBlockId; }
+class MyMechanicalConnectionBlockBase { public long EntityId; public MyCubeGrid CubeGrid; public MyObjectBuilder_MechanicalConnectionBlock GetObjectBuilderCubeBlock()=>new(); }
+class MyPistonBase:MyMechanicalConnectionBlockBase {}
 class MyCubeGrid { public long EntityId; public bool MarkedForClose,IsPreview,Suppressed; public Storage Storage=new(); public object[] GetFatBlocks()=>[]; }
 class Storage { public string Raw; public void RemoveValue(Guid key){ Raw=null; } }
 class MyEntities { public static Dictionary<long,MyCubeGrid> Grids=new(); public static MyCubeGrid GetEntityById(long id)=>Grids.GetValueOrDefault(id); }
@@ -33,4 +36,4 @@ class ConcealmentRuntime { public static ConcealmentRuntime Instance=new(); publ
 // supplies already established groups and tests the recovery/retention owner.
 partial class Subject { private void RestoreMechanicalLinks((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group, MechanicalPhysics owner) {} }
 
-class MechanicalPhysics { public class State {} public MechanicalPhysics(IEnumerable<MyCubeGrid> g){} public void RestoreStates(Dictionary<long,State> states){} public void Hold(){} public void ValidateComplete(){} public Dictionary<long,State> Snapshot()=>new(); }
+class MechanicalPhysics { public class State { public bool Present,Enabled,ForceDisabled; public bool? InWorld; public State Subparts; } public static Dictionary<long,State> SnapshotLive(MyCubeGrid grid)=>new(); public MechanicalPhysics(IEnumerable<MyCubeGrid> g){} public void RestoreStates(Dictionary<long,State> states){} public void Hold(){} public void ValidateComplete(){} public Dictionary<long,State> Snapshot()=>new(); }

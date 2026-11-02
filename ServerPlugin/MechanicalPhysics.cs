@@ -18,6 +18,8 @@ internal sealed class MechanicalPhysics
         [JsonRequired] public bool Present;
         [JsonRequired] public bool Enabled;
         [JsonRequired] public bool ForceDisabled;
+        public State Subparts;
+        public bool? InWorld;
     }
     private sealed class Entry
     {
@@ -27,23 +29,49 @@ internal sealed class MechanicalPhysics
         internal bool Durable;
         internal long? Target;
         internal MyAttachableTopBlockBase Top;
+        internal HkConstraint Subpart;
+        internal bool SubpartInWorld;
     }
     private readonly Dictionary<long, MyCubeGrid> grids = new();
     private readonly Dictionary<long, Entry> entries = new();
     private readonly HashSet<HkConstraint> owned = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<HkConstraint> added = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HkConstraint, State> releasePending = new(ReferenceEqualityComparer.Instance);
+    private static readonly System.Reflection.FieldInfo EnabledField = typeof(HkConstraint).GetField("m_enabled", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+    private static readonly System.Reflection.FieldInfo ForcedField = typeof(HkConstraint).GetField("m_forceDisabled", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
     private MyMechanicalConnectionBlockBase creating;
-    private bool invalid, changing, released, complete;
+    private bool invalid, changing, released, complete, authorized;
 
+    private MechanicalPhysics() { released = true; }
+    internal static Dictionary<long, State> SnapshotLive(MyCubeGrid grid) => grid.GetFatBlocks().OfType<MyMechanicalConnectionBlockBase>().ToDictionary(b => b.EntityId, b =>
+    {
+        var state = Read(b.Constraint);
+        if (b is MyPistonBase piston) state.Subparts = Read(piston.m_subpartsConstraint);
+        return state;
+    });
+    internal static MechanicalPhysics RestorePaid(MyMechanicalConnectionBlockBase block, State state)
+    {
+        var owner = new MechanicalPhysics();
+        owner.RestoreConstraint(block.Constraint, state);
+        if (block is MyPistonBase piston) owner.RestoreConstraint(piston.m_subpartsConstraint, state.Subparts);
+        return owner.ReleaseComplete ? null : owner;
+    }
     internal MechanicalPhysics(IEnumerable<MyCubeGrid> members)
     {
         foreach (var grid in members) grids.Add(grid.EntityId, grid);
         foreach (var block in Blocks())
         {
             var constraint = block.Constraint;
-            var state = new State { Present = constraint != null,
-                Enabled = constraint?.Enabled == true, ForceDisabled = constraint?.ForceDisabled == true };
-            entries.Add(block.EntityId, new Entry { Block = block, Expected = constraint, State = state, Target = ((MyObjectBuilder_MechanicalConnectionBlock)block.GetObjectBuilderCubeBlock()).TopBlockId });
+            var state = Read(constraint);
+            var entry = new Entry { Block = block, Expected = constraint, State = state, Target = ((MyObjectBuilder_MechanicalConnectionBlock)block.GetObjectBuilderCubeBlock()).TopBlockId };
+            entries.Add(block.EntityId, entry);
+            if (block is MyPistonBase piston)
+            {
+                entry.Subpart = piston.m_subpartsConstraint;
+                entry.SubpartInWorld = entry.Subpart?.InWorld == true;
+                state.Subparts = Read(entry.Subpart);
+                Own(entry.Subpart);
+            }
             Own(constraint);
         }
         Hold();
@@ -56,19 +84,64 @@ internal sealed class MechanicalPhysics
         foreach (var entry in entries.Values)
         {
             entry.State = saved[entry.Block.EntityId];
+            if (!entry.State.Present && (entry.State.Enabled || entry.State.ForceDisabled || entry.State.InWorld == true)
+                || entry.Block is not MyPistonBase && entry.State.Subparts != null)
+                throw new InvalidDataException("Invalid saved mechanical constraint absence");
+            if (entry.Block is MyPistonBase && (entry.State.Subparts == null || entry.State.Subparts.InWorld == null))
+                throw new InvalidDataException("Missing saved piston subpart constraint state");
             entry.Durable = true;
         }
     }
     private IEnumerable<MyMechanicalConnectionBlockBase> Blocks() => grids.Values.SelectMany(g => g.GetFatBlocks()).OfType<MyMechanicalConnectionBlockBase>();
     internal bool Contains(MyMechanicalConnectionBlockBase block) => grids.TryGetValue(block.CubeGrid.EntityId, out var grid) && ReferenceEquals(grid, block.CubeGrid);
+    internal bool DeferredRelease => entries.Values.Any(e => e.Subpart != null && !e.Subpart.IsDisposed && !e.Subpart.InWorld);
+    internal bool Released => released;
+    internal bool ReleaseComplete
+    {
+        get
+        {
+            foreach (var constraint in releasePending.Keys.Where(c => c.IsDisposed).ToArray()) releasePending.Remove(constraint);
+            return released && releasePending.Count == 0;
+        }
+    }
+    internal bool UnpaidOwns(HkConstraint constraint) => !released && owned.Contains(constraint);
     internal bool HasBlocks => entries.Count != 0;
-    internal bool Intact => !released && !invalid && Blocks().Count() == entries.Count && Blocks().All(b => entries.TryGetValue(b.EntityId, out var e)
+    internal bool Intact => !released && !invalid
+        && owned.All(c => c.IsDisposed || entries.Values.Any(e => ReferenceEquals(e.Expected, c) || ReferenceEquals(e.Subpart, c)))
+        && Blocks().Count() == entries.Count && Blocks().All(b => entries.TryGetValue(b.EntityId, out var e)
         && ReferenceEquals(e.Block, b) && !b.MarkedForClose && ReferenceEquals(MyEntities.GetEntityById(b.EntityId), b)
         && ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId == e.Target
         && (!complete || ReferenceEquals(e.Top, b.TopBlock) && (e.Top == null || ReferenceEquals(e.Top.Stator, b)))
         && ReferenceEquals(e.Expected, b.Constraint)
-        && (e.Expected == null || !e.Expected.IsDisposed && e.Expected.InWorld && !e.Expected.Enabled && e.Expected.ForceDisabled));
+        && (e.Expected == null || !e.Expected.IsDisposed && e.Expected.InWorld && !e.Expected.Enabled && e.Expected.ForceDisabled)
+        && (b is not MyPistonBase piston || ReferenceEquals(e.Subpart, piston.m_subpartsConstraint)
+            && (e.Subpart == null || !e.Subpart.IsDisposed && e.Subpart.InWorld == e.SubpartInWorld
+                && (!e.Subpart.InWorld || !e.Subpart.Enabled && e.Subpart.ForceDisabled))));
 
+    private static State Read(HkConstraint constraint) => constraint?.IsDisposed == true ? new State { Present = true } : new State { Present = constraint != null,
+        Enabled = constraint != null && (constraint.InWorld ? constraint.Enabled : (bool)EnabledField.GetValue(constraint)), ForceDisabled = constraint?.ForceDisabled == true, InWorld = constraint?.InWorld == true };
+    private void Subpart(Entry entry, HkConstraint constraint)
+    {
+        if (!ReferenceEquals(entry.Subpart, constraint))
+        {
+            if (ReferenceEquals(creating, entry.Block) && entry.Subpart == null && constraint != null)
+            {
+                entry.Subpart = constraint; entry.SubpartInWorld = constraint.InWorld;
+                if (!entry.Durable) entry.State.Subparts = Read(constraint);
+                else if (!entry.State.Subparts.Present) invalid = true;
+            }
+            else invalid = true;
+        }
+        Own(constraint);
+    }
+    internal void Constructed(HkConstraint constraint)
+    {
+        if (released || !grids.Values.Any(g => g.Physics != null && (g.Physics.RigidBody == constraint.RigidBodyA || g.Physics.RigidBody == constraint.RigidBodyB))) return;
+        Own(constraint);
+        if (creating == null) { invalid = true; return; }
+        if (creating is MyPistonBase piston && piston.m_subpartPhysics?.RigidBody == constraint.RigidBodyB)
+            Subpart(entries[creating.EntityId], constraint);
+    }
     private void Own(HkConstraint constraint)
     {
         if (constraint == null) return;
@@ -95,17 +168,39 @@ internal sealed class MechanicalPhysics
             if (ReferenceEquals(creating, block) && entry.Expected == null && constraint != null)
             {
                 entry.Expected = constraint;
-                if (!entry.Durable) entry.State = new State { Present = true, Enabled = constraint.Enabled, ForceDisabled = constraint.ForceDisabled };
+                if (!entry.Durable)
+                {
+                    var subparts = entry.State.Subparts;
+                    entry.State = Read(constraint); entry.State.Subparts = subparts;
+                }
                 else if (!entry.State.Present) invalid = true;
             }
             else invalid = true;
         }
         Own(constraint);
     }
-    internal void Added(HkConstraint constraint)
+    internal void Added(HkConstraint constraint, bool allowReleasedState = true)
     {
-        if (released || !owned.Contains(constraint)) return;
+        if (released)
+        {
+            if (releasePending.TryGetValue(constraint, out var state))
+            {
+                if (allowReleasedState)
+                {
+                    constraint.Enabled = state.Enabled;
+                    constraint.ForceDisabled = state.ForceDisabled;
+                }
+                releasePending.Remove(constraint);
+            }
+            return;
+        }
+        if (!owned.Contains(constraint)) return;
         added.Add(constraint);
+        foreach (var entry in entries.Values.Where(e => ReferenceEquals(e.Subpart, constraint)))
+        {
+            if (!ReferenceEquals(creating, entry.Block)) invalid = true;
+            entry.SubpartInWorld = true;
+        }
         Own(constraint);
     }
     internal bool CanSet(HkConstraint constraint) => released || !owned.Contains(constraint) || !constraint.IsDisposed && (constraint.InWorld || added.Contains(constraint));
@@ -120,11 +215,15 @@ internal sealed class MechanicalPhysics
         else
         {
             var entry = creating == null ? null : entries.GetValueOrDefault(creating.EntityId);
-            if (entry != null && ReferenceEquals(entry.Expected, constraint))
+            if (entry != null && (ReferenceEquals(entry.Expected, constraint) || ReferenceEquals(entry.Subpart, constraint)))
             {
                 // Legacy claims have no ephemeral-state history. Retain the actual
                 // native requested state of reconstruction, never a true default.
-                if (!entry.Durable) entry.State.Enabled = value;
+                if (!entry.Durable)
+                {
+                    if (ReferenceEquals(entry.Expected, constraint)) entry.State.Enabled = value;
+                    else entry.State.Subparts.Enabled = value;
+                }
             }
             else if (value) invalid = true;
             allowed = false;
@@ -139,7 +238,10 @@ internal sealed class MechanicalPhysics
         {
             // Also acquire when a native implementation bypasses its property.
             foreach (var current in Blocks())
+            {
                 if (current.Constraint != null && !owned.Contains(current.Constraint)) Assign(current, current.Constraint);
+                if (current is MyPistonBase piston) Subpart(entries[current.EntityId], piston.m_subpartsConstraint);
+            }
             creating = null;
             Hold();
         }
@@ -149,6 +251,12 @@ internal sealed class MechanicalPhysics
         foreach (var block in Blocks())
             if (!entries.TryGetValue(block.EntityId, out var entry) || !ReferenceEquals(entry.Block, block) || !ReferenceEquals(entry.Expected, block.Constraint))
             { invalid = true; Own(block.Constraint); }
+        foreach (var entry in entries.Values)
+            if (entry.Block is MyPistonBase piston)
+            {
+                if (!ReferenceEquals(entry.Subpart, piston.m_subpartsConstraint)) invalid = true;
+                Own(piston.m_subpartsConstraint);
+            }
         foreach (var constraint in owned)
             if (!constraint.IsDisposed) Own(constraint);
         if (!HasBlocks) return;
@@ -161,22 +269,45 @@ internal sealed class MechanicalPhysics
     internal Dictionary<long, State> Snapshot() => entries.ToDictionary(p => p.Key, p => p.Value.State);
     internal void ValidateComplete()
     {
-        if (!Intact || entries.Values.Any(e => e.State.Present != (e.Expected != null)))
+        if (!Intact || entries.Values.Any(e => e.State.Present != (e.Expected != null)
+            || e.Block is MyPistonBase && (e.State.Subparts.Present != (e.Subpart != null))))
             throw new InvalidDataException("Saved mechanical constraint presence changed during recovery");
         foreach (var entry in entries.Values) entry.Top = entry.Block.TopBlock;
         complete = true;
     }
+    internal void AuthorizeRelease() => authorized = true;
     internal void Release()
     {
-        if (!Intact) throw new InvalidDataException("Held mechanical constraint identity/state changed before reveal");
+        if (!authorized) throw new InvalidOperationException("Mechanical physics still belongs to an unpaid interval");
+        if (!released && !Intact || entries.Values.Any(e => !ReferenceEquals(e.Expected, e.Block.Constraint)
+            || e.Expected?.IsDisposed == true || e.Subpart?.IsDisposed == true
+            || e.Block is MyPistonBase piston && !ReferenceEquals(e.Subpart, piston.m_subpartsConstraint)))
+            throw new InvalidDataException("Held mechanical constraint identity/state changed before reveal");
         released = true;
         foreach (var entry in entries.Values)
-            if (entry.Expected != null)
-            {
-                entry.Expected.Enabled = entry.State.Enabled;
-                entry.Expected.ForceDisabled = entry.State.ForceDisabled;
-            }
+        {
+            RestoreConstraint(entry.Expected, entry.State);
+            if (entry.Block is MyPistonBase) RestoreConstraint(entry.Subpart, entry.State.Subparts);
+        }
         owned.Clear();
         added.Clear();
     }
+    private void RestoreConstraint(HkConstraint constraint, State state)
+    {
+        if (constraint == null) return;
+        if (constraint.InWorld)
+        {
+            constraint.Enabled = state.Enabled;
+            constraint.ForceDisabled = state.ForceDisabled;
+        }
+        else
+        {
+            // Native setters require world admission. Restore the managed
+            // intent of a deliberately deferred, inactive subpart instead.
+            releasePending[constraint] = state;
+            EnabledField.SetValue(constraint, state.Enabled);
+            ForcedField.SetValue(constraint, state.ForceDisabled);
+        }
+    }
+
 }

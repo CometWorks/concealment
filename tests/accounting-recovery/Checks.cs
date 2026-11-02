@@ -2,6 +2,9 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 partial class Subject {
  readonly List<MechanicalPhysics> physics=new();
+ readonly System.Collections.Concurrent.ConcurrentDictionary<long,(MyMechanicalConnectionBlockBase Block,long? Target,MechanicalPhysics.State State)> paidPhysics=new();
+ readonly HashSet<long> initializingPaidPhysics=new(); readonly HashSet<ConcealGroup> releasingPhysics=new();
+ void PrunePaidPhysics(){}
 
  readonly ConcurrentDictionary<long,Record> records=new();
  readonly ConcurrentDictionary<long,string> opaque=new();

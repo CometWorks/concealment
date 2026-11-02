@@ -540,6 +540,9 @@ public sealed class ConcealmentManager : IDisposable
         if (!Accounting.Settle(group)) return 0;
 #endif
         group.Reveal(componentUpdater);
+#if MAGNETAR
+        Accounting.Revealed(group);
+#endif
 #if !MAGNETAR
         GrantProductionBoost(group);
 #endif

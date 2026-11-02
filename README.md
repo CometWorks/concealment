@@ -171,12 +171,25 @@ caches, queues, phases and reactor capacity derived from fuel. Native inventory
 mutations through BeforeContentsChanged are refused while stock commit/rollback is
 in progress, before an external callback can change those stocks.
 
+Piston internal subpart constraints belong to the same owner. Native constructors
+are acquired before field publication. Subparts rebuilt by LoadSubparts remain outside
+the physics world until ordinary paid native updates admit them; no piston motion or
+shape-update callback runs during recovery. Their recorded flags are restored as
+managed intent while inactive and at native world admission after settlement. A new
+unpaid owner takes precedence over any deferred restoration from an older paid interval.
+
 New standalone records include private `Mechanical` state on the root row, with
-required Present/Enabled/ForceDisabled fields per base. It preserves originally disabled
+required Present/Enabled/ForceDisabled fields per base and piston subpart, plus
+explicit subpart world-membership history. Missing subpart history in a new piston
+record is refused. It preserves originally disabled
 constraints across native saves/reloads; it does not change shared profile schema 2 or
 accounting contract 2. Older claims have no historical ephemeral-constraint state. They
 retain their supported native reconstruction path: record the actual native requested
 state observed during reconstruction, including a native callback leaving it disabled.
+Paid saves snapshot the current flags per grid and bind them to that checkpoint's
+native saved targets. Normal native initialization restores them before later capture
+or a world save, including paid restart. This flag normalization does not invoke an
+unpaid motion callback or grant another compensation interval.
 That migration cannot recover an unrecorded historical disabled flag, and makes no such
 claim. Subsequent saves carry the observed state explicitly. Do not downgrade a world
 with new mechanical records: older binaries ignore this ownership and can force enable

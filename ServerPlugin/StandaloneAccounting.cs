@@ -33,7 +33,7 @@ internal sealed class StandaloneAccounting : IDisposable
         public long Root, AppliedThrough, CheckpointTicks;
         public long[] Members = [], Projectors = [];
         public double[][] Poses;
-        public bool Concealed;
+        public bool Concealed, MechanicalPaid;
         public OfflineProfile[] Profiles;
         public Dictionary<long, MechanicalPhysics.State> Mechanical;
     }
@@ -43,11 +43,14 @@ internal sealed class StandaloneAccounting : IDisposable
     private readonly ConcurrentDictionary<long, string> opaque = new();
     private readonly ConcurrentDictionary<long, (MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)> restored = new();
     private readonly List<MechanicalPhysics> physics = new();
+    private readonly ConcurrentDictionary<long, (MyMechanicalConnectionBlockBase Block, long? Target, MechanicalPhysics.State State)> paidPhysics = new();
+    private readonly HashSet<long> initializingPaidPhysics = new();
+    private readonly HashSet<ConcealGroup> releasingPhysics = new(ReferenceEqualityComparer.Instance);
     private bool recovered, disposed, stopped, applying, ownSnapshot;
     internal bool HasSavedState => !records.IsEmpty || !opaque.IsEmpty;
     private long nextCaptureWarning;
     private readonly Harmony harmony;
-    private readonly List<(System.Reflection.MethodInfo Target, System.Reflection.MethodInfo Patch)> patches = new();
+    private readonly List<(System.Reflection.MethodBase Target, System.Reflection.MethodInfo Patch)> patches = new();
     internal bool Enabled => plugin.ConfigData.ProductionConcealment == ProductionConcealmentMode.Approximate;
     internal bool Ready => recovered && plugin.Manager.Production.Ready;
     internal static long Frame => (long)Math.Floor(MySession.Static.ElapsedGameTime.TotalMilliseconds / 16);
@@ -72,16 +75,22 @@ internal sealed class StandaloneAccounting : IDisposable
         Patch(AccessTools.Method(typeof(MyCubeGrid), nameof(MyCubeGrid.Init), new[] { typeof(MyObjectBuilder_EntityBase) }), nameof(Initialized), false);
         Patch(AccessTools.Method(typeof(MyCubeGrid), nameof(MyCubeGrid.GetObjectBuilder), new[] { typeof(bool) }), nameof(Saving), false);
         Patch(AccessTools.PropertySetter(typeof(MyMechanicalConnectionBlockBase), "Constraint"), nameof(ConstraintChanging), true);
+        Patch(AccessTools.Constructor(typeof(Havok.HkConstraint), new[] { typeof(Havok.HkRigidBody), typeof(Havok.HkRigidBody), typeof(Havok.HkConstraintData), typeof(Havok.HkConstraintPriority) }), nameof(ConstraintConstructed), false);
         Patch(AccessTools.Method(typeof(Havok.HkConstraint), "OnAddedToWorld"), nameof(ConstraintAdded), true);
         Patch(AccessTools.PropertySetter(typeof(Havok.HkConstraint), "Enabled"), nameof(ConstraintEnabled), true);
         Patch(AccessTools.PropertySetter(typeof(Havok.HkConstraint), "ForceDisabled"), nameof(ConstraintForced), true);
+        foreach (var type in typeof(MyMechanicalConnectionBlockBase).Assembly.GetTypes().Where(t => typeof(MyMechanicalConnectionBlockBase).IsAssignableFrom(t)))
+        {
+            var initialize = type.GetMethod("UpdateOnceBeforeFrame", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+            if (initialize != null) Patch(initialize, nameof(BeforePaidPhysics), true, nameof(AfterPaidPhysics));
+        }
         // Native measurements are invoked only by this standalone host. Cluster
         // installs its own thin forwarding patches when it explicitly owns the core.
         Patch(AccessTools.Method(typeof(MyRefinery), "UpdateProduction", new[] { typeof(uint) }), nameof(MeasureRefinery), true, nameof(Measured));
         Patch(AccessTools.Method(typeof(MyAssembler), "UpdateProduction", new[] { typeof(uint), typeof(bool) }), nameof(MeasureAssembler), true, nameof(Measured));
         Patch(AccessTools.Method(typeof(MyReactor), "ConsumeFuel", new[] { typeof(float) }), nameof(ObserveFuel), true, nameof(FuelObserved));
     }
-    private void Patch(System.Reflection.MethodInfo target, string handler, bool prefix, string finalizer = null)
+    private void Patch(System.Reflection.MethodBase target, string handler, bool prefix, string finalizer = null)
     {
         if (target == null) throw new MissingMethodException("Standalone accounting native hook is unavailable: " + handler);
         var patch = AccessTools.Method(typeof(StandaloneAccounting), handler); patches.Add((target, patch));
@@ -100,7 +109,20 @@ internal sealed class StandaloneAccounting : IDisposable
         "offline.quietMeters" => Math.Max(0, plugin.ConfigData.ConcealDistance).ToString(CultureInfo.InvariantCulture),
         _ => throw new ArgumentException("Unknown accounting setting " + key),
     };
-    private static void SnapshotAllowed() { if (Current?.applying == true) throw new InvalidOperationException("Accounting transaction is committing; retry the world snapshot after this frame"); }
+    private static void SnapshotAllowed()
+    {
+        var owner = Current;
+        if (owner == null) return;
+        owner.PrunePaidPhysics();
+        if (owner.applying || owner.initializingPaidPhysics.Count != 0 || owner.releasingPhysics.Count != 0 || !owner.paidPhysics.IsEmpty)
+            throw new InvalidOperationException("Accounting or mechanical state is committing; retry the world snapshot after this frame");
+    }
+    private void PrunePaidPhysics()
+    {
+        if (MySession.Static?.Ready != true) return;
+        foreach (var pending in paidPhysics.ToArray())
+            if (pending.Value.Block.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(pending.Key), pending.Value.Block)) paidPhysics.TryRemove(pending.Key, out _);
+    }
     private static StandaloneAccounting Current => ConcealmentRuntime.StandaloneOwner ? ConcealmentRuntime.Instance.Manager.Accounting : null;
     private static void Initialized(MyCubeGrid __instance, MyObjectBuilder_EntityBase objectBuilder) => Current?.Restore(__instance, (MyObjectBuilder_CubeGrid)objectBuilder);
     private static void Saving(MyCubeGrid __instance, MyObjectBuilder_EntityBase __result) => Current?.Save(__instance, (MyObjectBuilder_CubeGrid)__result);
@@ -115,9 +137,21 @@ internal sealed class StandaloneAccounting : IDisposable
         foreach (var owner in Current?.physics.ToArray() ?? [])
             if (owner.Contains(__instance)) owner.Assign(__instance, __0);
     }
+    private static void ConstraintConstructed(Havok.HkConstraint __instance)
+    {
+        foreach (var owner in Current?.physics.ToArray() ?? []) owner.Constructed(__instance);
+    }
     private static void ConstraintAdded(Havok.HkConstraint __instance)
     {
-        foreach (var owner in Current?.physics.ToArray() ?? []) owner.Added(__instance);
+        var current = Current;
+        if (current == null) return;
+        var owners = current.physics.ToArray();
+        bool unpaid = owners.Any(o => o.UnpaidOwns(__instance));
+        foreach (var owner in owners)
+        {
+            owner.Added(__instance, !unpaid);
+            if (owner.ReleaseComplete) current.physics.Remove(owner);
+        }
     }
     private static bool ConstraintEnabled(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, false);
     private static bool ConstraintForced(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, true);
@@ -138,6 +172,40 @@ internal sealed class StandaloneAccounting : IDisposable
         return owner;
     }
 
+    private static void BeforePaidPhysics(MyMechanicalConnectionBlockBase __instance, out bool __state)
+    {
+        var owner = Current;
+        __state = owner != null && owner.paidPhysics.TryGetValue(__instance.EntityId, out var pending)
+            && ReferenceEquals(pending.Block, __instance) && owner.initializingPaidPhysics.Add(__instance.EntityId);
+    }
+    private static void AfterPaidPhysics(MyMechanicalConnectionBlockBase __instance, bool __state, Exception __exception)
+    {
+        var owner = Current;
+        if (!__state || owner == null) return;
+        try
+        {
+            if (__exception != null)
+            {
+                __instance.NeedsUpdate |= VRage.ModAPI.MyEntityUpdateEnum.BEFORE_NEXT_FRAME;
+                return;
+            }
+            if (!owner.paidPhysics.TryGetValue(__instance.EntityId, out var pending)) return;
+            if (ReferenceEquals(pending.Block, __instance)
+                && ((MyObjectBuilder_MechanicalConnectionBlock)__instance.GetObjectBuilderCubeBlock()).TopBlockId == pending.Target
+                && pending.State.Present == (__instance.Constraint != null)
+                && __instance.Constraint?.IsDisposed != true
+                && (__instance is not MyPistonBase piston || pending.State.Subparts.Present == (piston.m_subpartsConstraint != null) && piston.m_subpartsConstraint?.IsDisposed != true)
+                && !owner.physics.Any(p => p.UnpaidOwns(__instance.Constraint) || __instance is MyPistonBase part && p.UnpaidOwns(part.m_subpartsConstraint)))
+            {
+                var deferred = MechanicalPhysics.RestorePaid(__instance, pending.State);
+                if (deferred != null) owner.physics.Add(deferred);
+            }
+            owner.paidPhysics.TryRemove(__instance.EntityId, out _);
+        }
+        catch (Exception e) { owner.plugin.Log.Error(e, "Native paid mechanical state restoration failed for {0}", __instance.EntityId); }
+        finally { owner.initializingPaidPhysics.Remove(__instance.EntityId); }
+    }
+
     private void Restore(MyCubeGrid grid, MyObjectBuilder_CubeGrid builder)
     {
         plugin.Manager.Production.Restored(grid, builder);
@@ -150,6 +218,22 @@ internal sealed class StandaloneAccounting : IDisposable
             if (record.CheckpointTicks != MySession.Static.ElapsedGameTime.Ticks) throw new InvalidDataException("Accounting stocks and world clock are from different checkpoints");
             if (record.Schema != 1 || record.Root == 0 || !record.Members.Contains(grid.EntityId) || string.IsNullOrEmpty(record.Epoch)) throw new InvalidDataException("Invalid standalone claim schema/membership");
             records[grid.EntityId] = record;
+            if (record.MechanicalPaid && !record.Concealed && record.Rejected == null)
+            {
+                var blocks = grid.GetFatBlocks().OfType<MyMechanicalConnectionBlockBase>().ToArray();
+                if (record.Profiles != null || record.Mechanical == null || !record.Mechanical.Keys.Order().SequenceEqual(blocks.Select(b => b.EntityId).Order())
+                    || record.Mechanical.Values.Any(s => s == null)) throw new InvalidDataException("Incomplete paid mechanical state");
+                var saved = builder.CubeBlocks.OfType<MyObjectBuilder_MechanicalConnectionBlock>().ToDictionary(b => b.EntityId);
+                foreach (var block in blocks)
+                {
+                    var state = record.Mechanical[block.EntityId];
+                    if (!state.Present && (state.Enabled || state.ForceDisabled || state.InWorld == true)
+                        || block is MyPistonBase && (state.Subparts == null || state.Subparts.InWorld == null)
+                        || block is not MyPistonBase && state.Subparts != null)
+                        throw new InvalidDataException("Invalid paid mechanical state");
+                    paidPhysics[block.EntityId] = (block, saved[block.EntityId].TopBlockId, state);
+                }
+            }
             if (record.Concealed || record.Rejected != null)
             {
                 restored[grid.EntityId] = (grid, record, (MyObjectBuilder_CubeGrid)builder.Clone());
@@ -158,6 +242,8 @@ internal sealed class StandaloneAccounting : IDisposable
         }
         catch (Exception e)
         {
+            foreach (var pending in paidPhysics.ToArray())
+                if (ReferenceEquals(pending.Value.Block.CubeGrid, grid)) paidPhysics.TryRemove(pending.Key, out _);
             opaque[grid.EntityId] = raw;
             ConcealGroup.SuppressUpdates(grid, null);
             plugin.Log.Error(e, "Standalone accounting state for {0} is quarantined; original metadata retained", grid.EntityId);
@@ -166,13 +252,23 @@ internal sealed class StandaloneAccounting : IDisposable
     }
     private void Save(MyCubeGrid grid, MyObjectBuilder_CubeGrid builder)
     {
-        if (applying && !ownSnapshot) throw new InvalidOperationException("Cannot snapshot a partial standalone accounting transaction");
+        if (!ownSnapshot && (applying || paidPhysics.Values.Any(p => ReferenceEquals(p.Block.CubeGrid, grid))
+            || releasingPhysics.Any(g => g.Grids.Contains(grid)))) throw new InvalidOperationException("Cannot snapshot a partial standalone accounting transaction");
         plugin.Manager.Production.Saving(grid, builder);
         if (opaque.TryGetValue(grid.EntityId, out string raw)) { BlockBuilderEntry.Write(builder, AccountingMetadata.AccountingKey, raw); return; }
         if (!records.TryGetValue(grid.EntityId, out var record)) return;
         // Bind every serialized stock builder to the same native checkpoint clock.
         // A crash during native multi-file promotion may mix checkpoint and sector;
         // reject that combination on load instead of granting an interval twice.
+        bool paidMechanical = !record.Concealed && record.Rejected == null;
+        var mechanical = paidMechanical ? MechanicalPhysics.SnapshotLive(grid) : record.Mechanical;
+        if (paidMechanical)
+        {
+            var savedTargets = builder.CubeBlocks.OfType<MyObjectBuilder_MechanicalConnectionBlock>().ToDictionary(b => b.EntityId, b => b.TopBlockId);
+            if (!savedTargets.Keys.Order().SequenceEqual(mechanical.Keys.Order()) || grid.GetFatBlocks().OfType<MyMechanicalConnectionBlockBase>()
+                .Any(b => ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId != savedTargets[b.EntityId]))
+                throw new InvalidOperationException("Mechanical state changed during world snapshot; retry after this frame");
+        }
         var stored = new Record { World = record.World, Epoch = record.Epoch, Root = record.Root,
             Members = record.Members, Projectors = record.Projectors, Concealed = record.Concealed,
             AppliedThrough = record.AppliedThrough, Rejected = record.Rejected,
@@ -181,7 +277,7 @@ internal sealed class StandaloneAccounting : IDisposable
             Signature = grid.EntityId == record.Root ? record.Signature : null,
             Poses = grid.EntityId == record.Root ? record.Poses : null,
             Profiles = grid.EntityId == record.Root ? record.Profiles : null,
-            Mechanical = grid.EntityId == record.Root ? record.Mechanical : null };
+            MechanicalPaid = paidMechanical, Mechanical = paidMechanical || grid.EntityId == record.Root ? mechanical : null };
         string json = JsonSerializer.Serialize(stored, OfflineProfile.Json);
         if (json.Length > AccountingMetadata.MaximumBytes) throw new InvalidDataException("Standalone accounting claim exceeds storage limit");
         BlockBuilderEntry.Write(builder, AccountingMetadata.AccountingKey, json);
@@ -189,6 +285,7 @@ internal sealed class StandaloneAccounting : IDisposable
     internal void Update()
     {
         if (disposed || stopped || MySession.Static?.Ready != true) return;
+        PrunePaidPhysics();
         if (!recovered)
         {
             recovered = true;
@@ -417,7 +514,8 @@ internal sealed class StandaloneAccounting : IDisposable
         Protect(loaded).Hold();
         plugin.Manager.Dynamic.GuardConcealedUpdates(loaded.Select(g => g.GetType()).Concat(loaded.SelectMany(g => g.GetFatBlocks()).Select(b => b.GetType())));
     }
-    private bool HasClaim(long id) => opaque.ContainsKey(id) || records.TryGetValue(id, out var record) && (record.Concealed || record.Rejected != null);
+    private bool HasClaim(long id) => opaque.ContainsKey(id) || paidPhysics.Values.Any(p => p.Block.CubeGrid.EntityId == id)
+        || records.TryGetValue(id, out var record) && (record.Concealed || record.Rejected != null);
     private static MyCubeGrid[][] Groups(ConcealGroup group)
     {
         var remaining = group.Grids.OrderBy(g => g.EntityId).ToDictionary(g => g.EntityId);
@@ -552,8 +650,10 @@ internal sealed class StandaloneAccounting : IDisposable
             ValidateResult(desired);
             record.AppliedThrough = Frame;
             record.Concealed = false;
-            record.Profiles = null; mutated = false; applying = false; // excess beyond the host cap is forfeited, never banked
-            physics.Remove(group.Physics);
+            record.Profiles = null; mutated = false;
+            group.Physics?.AuthorizeRelease();
+            releasingPhysics.Add(group); // excess beyond the host cap is forfeited, never banked
+            if (group.Physics?.DeferredRelease != true) physics.Remove(group.Physics);
             foreach (var value in modeled) plugin.Log.Info("Standalone compensation {0}", JsonSerializer.Serialize(value.Result, OfflineProfile.Json));
             return true;
         }
@@ -585,6 +685,7 @@ internal sealed class StandaloneAccounting : IDisposable
             applying = false; ownSnapshot = false;
         }
     }
+    internal void Revealed(ConcealGroup group) => releasingPhysics.Remove(group);
     private string CachePath => Path.Combine(VRage.FileSystem.MyFileSystem.UserDataPath, "ConcealmentRates." + AccountingStock.Hash(System.Text.Encoding.UTF8.GetBytes(AccountingStock.World)) + ".json");
     internal void SaveCache()
     {

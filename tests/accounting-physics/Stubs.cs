@@ -3,12 +3,13 @@ using Havok;
 static class Native { internal static readonly List<MechanicalPhysics> Owners=new(); }
 namespace Havok {
  class HkConstraint {
-  bool requested=true,forced;
+  bool m_enabled=true,m_forceDisabled;
+  public object RigidBodyA,RigidBodyB;
   public bool IsDisposed,InWorld=true;
   public override int GetHashCode()=>IsDisposed?0:base.GetHashCode();
   public override bool Equals(object value)=>ReferenceEquals(this,value)||(IsDisposed&&value is HkConstraint c&&c.IsDisposed);
-  public bool Enabled { get=>requested&&!forced; set { bool v=value; foreach(var o in Native.Owners)o.Setting(this,v,false,ref v);requested=v; } }
-  public bool ForceDisabled {get=>forced;set {bool v=value;foreach(var o in Native.Owners)o.Setting(this,v,true,ref v);forced=v;} }
+  public bool Enabled { get=>m_enabled&&!m_forceDisabled; set { bool v=value; foreach(var o in Native.Owners)o.Setting(this,v,false,ref v);m_enabled=v; } }
+  public bool ForceDisabled {get=>m_forceDisabled;set {bool v=value;foreach(var o in Native.Owners)o.Setting(this,v,true,ref v);m_forceDisabled=v;} }
  }
 }
 namespace Sandbox.Common.ObjectBuilders { class MyObjectBuilder_MechanicalConnectionBlock { public long? TopBlockId; } }
@@ -25,5 +26,6 @@ namespace Sandbox.Game.Entities.Blocks {
   public HkConstraint Constraint {get=>constraint;set {foreach(var o in Native.Owners.Where(o=>o.Contains(this)))o.Assign(this,value);constraint=value;} }
   public Sandbox.Common.ObjectBuilders.MyObjectBuilder_MechanicalConnectionBlock GetObjectBuilderCubeBlock()=>new(){TopBlockId=Target};
  }
+ class MyPistonBase:MyMechanicalConnectionBlockBase { public HkConstraint m_subpartsConstraint; public MyCubeGrid Part=new(); public Physics m_subpartPhysics=>Part.Physics; }
  class MyAttachableTopBlockBase {public MyMechanicalConnectionBlockBase Stator;}
 }

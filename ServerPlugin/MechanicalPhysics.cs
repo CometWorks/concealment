@@ -31,6 +31,7 @@ internal sealed class MechanicalPhysics
     private readonly Dictionary<long, MyCubeGrid> grids = new();
     private readonly Dictionary<long, Entry> entries = new();
     private readonly HashSet<HkConstraint> owned = new();
+    private readonly HashSet<HkConstraint> added = new();
     private MyMechanicalConnectionBlockBase creating;
     private bool invalid, changing, released, complete;
 
@@ -72,6 +73,7 @@ internal sealed class MechanicalPhysics
         if (constraint == null) return;
         owned.Add(constraint);
         if (constraint.IsDisposed) { invalid = true; return; }
+        if (!constraint.InWorld && !added.Contains(constraint)) return;
         changing = true;
         try { constraint.ForceDisabled = true; }
         finally { changing = false; }
@@ -99,6 +101,13 @@ internal sealed class MechanicalPhysics
         }
         Own(constraint);
     }
+    internal void Added(HkConstraint constraint)
+    {
+        if (released || !owned.Contains(constraint)) return;
+        added.Add(constraint);
+        Own(constraint);
+    }
+    internal bool CanSet(HkConstraint constraint) => released || !owned.Contains(constraint) || constraint.InWorld || added.Contains(constraint);
     internal void Setting(HkConstraint constraint, bool value, bool force, ref bool allowed)
     {
         if (changing || released || !owned.Contains(constraint)) return;
@@ -166,5 +175,6 @@ internal sealed class MechanicalPhysics
                 entry.Expected.ForceDisabled = entry.State.ForceDisabled;
             }
         owned.Clear();
+        added.Clear();
     }
 }

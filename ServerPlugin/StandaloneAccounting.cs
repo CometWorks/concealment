@@ -71,6 +71,7 @@ internal sealed class StandaloneAccounting : IDisposable
         Patch(AccessTools.Method(typeof(MyCubeGrid), nameof(MyCubeGrid.Init), new[] { typeof(MyObjectBuilder_EntityBase) }), nameof(Initialized), false);
         Patch(AccessTools.Method(typeof(MyCubeGrid), nameof(MyCubeGrid.GetObjectBuilder), new[] { typeof(bool) }), nameof(Saving), false);
         Patch(AccessTools.PropertySetter(typeof(MyMechanicalConnectionBlockBase), "Constraint"), nameof(ConstraintChanging), true);
+        Patch(AccessTools.Method(typeof(Havok.HkConstraint), "OnAddedToWorld"), nameof(ConstraintAdded), true);
         Patch(AccessTools.PropertySetter(typeof(Havok.HkConstraint), "Enabled"), nameof(ConstraintEnabled), true);
         Patch(AccessTools.PropertySetter(typeof(Havok.HkConstraint), "ForceDisabled"), nameof(ConstraintForced), true);
         // Native measurements are invoked only by this standalone host. Cluster
@@ -113,11 +114,21 @@ internal sealed class StandaloneAccounting : IDisposable
         foreach (var owner in Current?.physics.ToArray() ?? [])
             if (owner.Contains(__instance)) owner.Assign(__instance, __0);
     }
-    private static void ConstraintEnabled(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, false);
-    private static void ConstraintForced(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, true);
-    private static void ConstraintSetting(Havok.HkConstraint constraint, ref bool value, bool force)
+    private static void ConstraintAdded(Havok.HkConstraint __instance)
     {
-        foreach (var owner in Current?.physics.ToArray() ?? []) owner.Setting(constraint, value, force, ref value);
+        foreach (var owner in Current?.physics.ToArray() ?? []) owner.Added(__instance);
+    }
+    private static bool ConstraintEnabled(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, false);
+    private static bool ConstraintForced(Havok.HkConstraint __instance, ref bool __0) => ConstraintSetting(__instance, ref __0, true);
+    private static bool ConstraintSetting(Havok.HkConstraint constraint, ref bool value, bool force)
+    {
+        bool nativeReady = true;
+        foreach (var owner in Current?.physics.ToArray() ?? [])
+        {
+            owner.Setting(constraint, value, force, ref value);
+            nativeReady &= owner.CanSet(constraint);
+        }
+        return nativeReady;
     }
     private MechanicalPhysics Protect(IEnumerable<MyCubeGrid> grids)
     {

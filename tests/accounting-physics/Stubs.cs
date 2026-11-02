@@ -4,7 +4,7 @@ static class Native { internal static readonly List<MechanicalPhysics> Owners=ne
 namespace Havok {
  class HkConstraint {
   bool requested=true,forced;
-  public bool IsDisposed;
+  public bool IsDisposed,InWorld=true;
   public bool Enabled { get=>requested&&!forced; set { bool v=value; foreach(var o in Native.Owners)o.Setting(this,v,false,ref v);requested=v; } }
   public bool ForceDisabled {get=>forced;set {bool v=value;foreach(var o in Native.Owners)o.Setting(this,v,true,ref v);forced=v;} }
  }

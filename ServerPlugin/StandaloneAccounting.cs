@@ -650,6 +650,7 @@ internal sealed class StandaloneAccounting : IDisposable
         if (record.Rejected != null) return false;
         Dictionary<long, MyObjectBuilder_EntityBase> original = null;
         AccountingStockCommit.Prepared rollback = null;
+        string originalHash = null, originalTransaction = null;
         bool mutated = false;
         string settingsSignature = null;
         var lockedInventories = new List<MyInventory>();
@@ -669,21 +670,23 @@ internal sealed class StandaloneAccounting : IDisposable
                 if (!records.TryGetValue(record.Root, out var current) || !ReferenceEquals(current, record))
                     throw new InvalidDataException("Accounting claim owner changed during commit");
             }
-            void ValidateResult(Dictionary<long, MyObjectBuilder_EntityBase> expected)
+            void ValidateResult(string expected, AccountingStockCommit.Prepared prepared)
             {
                 ValidateIdentity();
                 ownSnapshot = true;
                 try
                 {
-                    if (AccountingStock.Fingerprint(AccountingStock.Builders(group.Grids).Values.Cast<MyObjectBuilder_CubeGrid>())
-                        != AccountingStock.Fingerprint(expected.Values.Cast<MyObjectBuilder_CubeGrid>()))
+                    prepared.Validate();
+                    if (AccountingStock.TransactionFingerprint(AccountingStock.Builders(group.Grids).Values.Cast<MyObjectBuilder_CubeGrid>()) != expected)
                         throw new InvalidDataException("Native stock commit did not match the prepared result");
                 }
                 finally { ownSnapshot = false; }
             }
             ValidateIdentity();
             original = AccountingStock.Builders(group.Grids);
-            if (AccountingStock.Fingerprint(original.Values.Cast<MyObjectBuilder_CubeGrid>()) != record.StockHash) throw new InvalidDataException("Live stocks/queues/content changed while concealed");
+            originalHash = AccountingStock.Fingerprint(original.Values.Cast<MyObjectBuilder_CubeGrid>());
+            originalTransaction = AccountingStock.TransactionFingerprint(original.Values.Cast<MyObjectBuilder_CubeGrid>());
+            if (originalHash != record.StockHash) throw new InvalidDataException("Live stocks/queues/content changed while concealed");
             var desired = original.ToDictionary(p => p.Key, p => (MyObjectBuilder_EntityBase)p.Value.Clone());
             var modeled = record.Profiles.Select(p => AccountingEngine.ModelForHost(p, Frame)).ToArray();
             for (int i = 0; i < modeled.Length; i++) AccountingEngine.Commit(record.Profiles[i], modeled[i].Model, desired);
@@ -700,14 +703,13 @@ internal sealed class StandaloneAccounting : IDisposable
             settingsSignature = AccountingEngine.Signature(group.Grids.OrderBy(g => g.EntityId).ToArray(), record.Poses == null, false);
             for (int i = 0; i < prepared.Write.Length; i++)
             {
-                ValidateResult(stage);
-                prepared.Advance[i]();
+                ValidateResult(prepared.Stages[i], prepared);
                 prepared.Write[i]();
-                ValidateResult(stage);
+                ValidateResult(prepared.Stages[i + 1], prepared);
             }
-            ValidateResult(desired);
-            foreach (var action in prepared.Notify) { ValidateIdentity(); action(); ValidateResult(desired); }
-            ValidateResult(desired);
+            ValidateResult(prepared.Result, prepared);
+            foreach (var action in prepared.Notify) { ValidateResult(prepared.Result, prepared); action(); ValidateResult(prepared.Result, prepared); }
+            ValidateResult(prepared.Result, prepared);
             record.AppliedThrough = Frame;
             record.Concealed = false;
             record.Profiles = null; mutated = false;
@@ -734,8 +736,8 @@ internal sealed class StandaloneAccounting : IDisposable
                 ownSnapshot = true;
                 try
                 {
-                    if (AccountingStock.Fingerprint(AccountingStock.Builders(group.Grids).Values.Cast<MyObjectBuilder_CubeGrid>())
-                        != AccountingStock.Fingerprint(original.Values.Cast<MyObjectBuilder_CubeGrid>()))
+                    var restored = AccountingStock.Builders(group.Grids).Values.Cast<MyObjectBuilder_CubeGrid>().ToArray();
+                    if (AccountingStock.Fingerprint(restored) != originalHash || AccountingStock.TransactionFingerprint(restored) != originalTransaction)
                         throw new InvalidDataException("Accounting rollback did not restore original stocks");
                 }
                 catch (Exception restore) { plugin.Log.Critical(restore, "Accounting rollback verification failed; group remains concealed"); }

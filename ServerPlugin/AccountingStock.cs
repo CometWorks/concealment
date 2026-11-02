@@ -28,7 +28,28 @@ internal static class AccountingStock
         if (!MyObjectBuilderSerializerKeen.SerializeXML(stream, builder)) throw new InvalidDataException("Accounting snapshot serialization failed");
         return Encoding.UTF8.GetString(stream.ToArray());
     }
-    internal static string Fingerprint(IEnumerable<MyObjectBuilder_CubeGrid> grids)
+    // Durable checkpoint contract: keep this hash byte-compatible with old unpaid records.
+    internal static string Fingerprint(IEnumerable<MyObjectBuilder_CubeGrid> grids) => FingerprintCore(grids, false);
+
+    // A transaction compares stable settings and paid credit, separately from
+    // the explicitly owned native bubble's regenerated lifecycle metadata.
+    internal static string TransactionFingerprint(IEnumerable<MyObjectBuilder_CubeGrid> grids) => FingerprintCore(grids, true);
+    internal static string ZoneSettings(MyObjectBuilder_SafeZone zone)
+    {
+        if (zone == null) return "absent";
+        var copy = (MyObjectBuilder_SafeZone)zone.Clone();
+        copy.EntityId = 0; copy.Name = null; copy.PositionAndOrientation = null;
+        copy.ContainedEntities = null; copy.ContainedGrids = null;
+        return Xml(copy);
+    }
+    internal static (TimeSpan Deadline, double Serialized) ZoneUpkeep(double credit, long now)
+    {
+        // Deserialize consumes the raw modeled credit once. Serialize exposes
+        // this deadline; feeding that serialized value back can lose a tick.
+        var deadline = TimeSpan.FromMilliseconds(now + credit);
+        return (deadline, deadline.TotalMilliseconds - now);
+    }
+    private static string FingerprintCore(IEnumerable<MyObjectBuilder_CubeGrid> grids, bool transaction)
     {
         var text = new StringBuilder();
         foreach (var grid in grids.OrderBy(g => g.EntityId))
@@ -45,7 +66,13 @@ internal static class AccountingStock
                         text.Append('|').Append(((decimal)item.Amount).ToString("G29", CultureInfo.InvariantCulture)).Append(':').Append(item.Scale.ToString("R", CultureInfo.InvariantCulture)).Append(':').Append(Xml(item.PhysicalContent));
                 }
                 var zone = block.ComponentContainer?.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().FirstOrDefault();
-                if (zone?.SafeZoneOb != null) text.Append(':').Append(Xml(zone.SafeZoneOb));
+                if (transaction && zone != null)
+                {
+                    text.Append(':').Append(ZoneSettings(zone.SafeZoneOb as MyObjectBuilder_SafeZone));
+                    text.Append(':').Append(zone.UpkeepTime.ToString("R", CultureInfo.InvariantCulture))
+                        .Append(':').Append(zone.Activating).Append(':').Append(zone.ActivationTime);
+                }
+                else if (zone?.SafeZoneOb != null) text.Append(':').Append(Xml(zone.SafeZoneOb));
                 switch (block)
                 {
                     case MyObjectBuilder_BatteryBlock battery: text.Append(':').Append(battery.CurrentStoredPower.ToString("R", CultureInfo.InvariantCulture)).Append(':').Append(battery.ChargeMode).Append(':').Append(battery.ProducerEnabled); break;
@@ -60,7 +87,7 @@ internal static class AccountingStock
         }
         return Hash(Encoding.UTF8.GetBytes(text.ToString()));
     }
-    internal static Dictionary<long, MyObjectBuilder_EntityBase> Builders(IEnumerable<MyCubeGrid> grids) => grids.ToDictionary(g => g.EntityId, g => g.GetObjectBuilder());
+    internal static Dictionary<long, MyObjectBuilder_EntityBase> Builders(IEnumerable<MyCubeGrid> grids) => grids.ToDictionary(g => g.EntityId, g => (MyObjectBuilder_EntityBase)g.GetObjectBuilder().Clone());
 
     internal static double[] Pose(VRageMath.MatrixD m) => [m.M41, m.M42, m.M43, m.M11, m.M12, m.M13, m.M21, m.M22, m.M23, m.M31, m.M32, m.M33];
     internal static double[][] Poses(IEnumerable<MyCubeGrid> grids) => grids.Select(g => Pose(g.WorldMatrix)).ToArray();

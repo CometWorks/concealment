@@ -27,13 +27,13 @@ namespace Shared.Concealment;
 // are committed. Reentrant snapshots are refused by StandaloneAccounting.Saving.
 internal static class AccountingStockCommit
 {
-    internal sealed record Prepared(Action[] Write, Action[] Notify, Action[] Advance);
+    internal sealed record Prepared(Action[] Write, Action[] Notify, string[] Stages, string Result, Action Validate);
     internal static Prepared Prepare(MyCubeGrid[] grids, Dictionary<long, MyObjectBuilder_EntityBase> builders, OfflineProfile[] models, bool restore = false, Dictionary<long, MyObjectBuilder_EntityBase> stage = null)
     {
         var blocks = grids.SelectMany(g => g.GetFatBlocks()).ToDictionary(b => b.EntityId);
         var saved = builders.Values.Cast<MyObjectBuilder_CubeGrid>().SelectMany(g => g.CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
         var staged = stage?.Values.Cast<MyObjectBuilder_CubeGrid>().SelectMany(g => g.CubeBlocks).Where(b => b.EntityId != 0).ToDictionary(b => b.EntityId);
-        var advance = new List<Action>();
+        var advance = new List<Action>(); var validate = new List<Action>();
         var write = new List<Action>(); var notify = new List<Action>();
         void Add(long block, Action action, Action<MyObjectBuilder_CubeBlock> next)
         {
@@ -49,7 +49,7 @@ internal static class AccountingStockCommit
                 var candidates = AccountingEngine.Inventories(saved[inventory.Block]).ToArray();
                 var ob = candidates.FirstOrDefault(i => i.InventoryId == inventory.InventoryId) ?? candidates[inventory.Index];
                 if (!restore && AccountingStock.Xml(live.GetObjectBuilder()) == AccountingStock.Xml(ob)) continue;
-                var items = ob.Items.Select(i => new MyPhysicalInventoryItem { ItemId = i.ItemId, Amount = i.Amount, Scale = i.Scale, Content = i.PhysicalContent }).ToList();
+                var items = ob.Items.Select(i => new MyPhysicalInventoryItem { ItemId = i.ItemId, Amount = i.Amount, Scale = i.Scale, Content = (MyObjectBuilder_PhysicalObject)i.PhysicalContent.Clone() }).ToList();
                 var ids = items.Select(i => i.ItemId).ToHashSet();
                 if (ids.Count != items.Count) throw new InvalidDataException("Duplicate modeled item identity");
                 uint next = ob.nextItemId;
@@ -64,7 +64,7 @@ internal static class AccountingStockCommit
                 {
                     var inventories = AccountingEngine.Inventories(block).ToArray();
                     var target = inventories.FirstOrDefault(i => i.InventoryId == inventory.InventoryId) ?? inventories[inventory.Index];
-                    target.Items = ob.Items;
+                    target.Items = ((MyObjectBuilder_Inventory)ob.Clone()).Items;
                 });
                 notify.Add(() => { live.RefreshVolumeAndMass(); live.OnContentsChanged(); });
             }
@@ -83,12 +83,54 @@ internal static class AccountingStockCommit
                         break;
                     case "Tank":
                         var tank = (MyGasTank)block; float ratio = ((MyObjectBuilder_GasTank)saved[store.Block]).FilledRatio;
-                        Add(store.Block, () => tank.m_filledRatio = ratio, b => ((MyObjectBuilder_GasTank)b).FilledRatio = ratio);
-                        notify.Add(() => ((Sandbox.ModAPI.IMyGasTank)tank).ChangeFilledRatio(ratio, true));
+                        double capturedRatio = tank.FilledRatio, litres = tank.m_oldInLitres;
+                        var tankSource = tank.SourceComp.m_dataPerType.ToArray();
+                        var tankSink = tank.ResourceSink.m_dataPerType.ToArray();
+                        bool forcePower = tank.ResourceSink.m_forceTriggerPowerChanged, emptyEffect = tank.m_isEmptyDamageEffectStarted;
+                        bool detailedInfo = tank.m_detailedInfoDirty, syncNeeded = tank.m_syncNeeded;
+                        var previousColor = tank.m_prevColor; int previousFill = tank.m_prevFillCount;
+                        double previousTransfer = tank.m_prevSumTotalTransfer;
+                        bool tankWritten = false;
+                        Add(store.Block, () =>
+                        {
+                            if (!restore)
+                            {
+                                // Native sync quantization dispatches the local server receiver,
+                                // which owns assignment, source capacity, sink and notifications.
+                                ((Sandbox.ModAPI.IMyGasTank)tank).ChangeFilledRatio(ratio, true);
+                                tankWritten = true;
+                            }
+                            else try { ((Sandbox.ModAPI.IMyGasTank)tank).ChangeFilledRatio(capturedRatio, true); }
+                            finally
+                            {
+                                tank.m_filledRatio = capturedRatio; tank.m_oldInLitres = litres;
+                                tank.SourceComp.m_dataPerType = tankSource; tank.ResourceSink.m_dataPerType = tankSink;
+                                tank.ResourceSink.m_forceTriggerPowerChanged = forcePower; tank.m_isEmptyDamageEffectStarted = emptyEffect;
+                                tank.m_detailedInfoDirty = detailedInfo; tank.m_syncNeeded = syncNeeded;
+                                tank.m_prevColor = previousColor; tank.m_prevFillCount = previousFill; tank.m_prevSumTotalTransfer = previousTransfer;
+                            }
+                        }, b => ((MyObjectBuilder_GasTank)b).FilledRatio = ratio);
+                        validate.Add(() =>
+                        {
+                            if (tankWritten && (tank.FilledRatio != ratio || tank.SourceComp.RemainingCapacityByType(tank.BlockDefinition.StoredGasId)
+                                != (float)((double)ratio * tank.Capacity))) throw new InvalidDataException("Native tank reservoir/source mismatch");
+                        });
                         break;
                     case "Engine":
                         var engine = (MyGasFueledPowerProducer)block; float capacity = ((MyObjectBuilder_FueledPowerProducer)saved[store.Block]).Capacity;
-                        Add(store.Block, () => engine.Capacity = capacity, b => ((MyObjectBuilder_FueledPowerProducer)b).Capacity = capacity); break;
+                        float capturedCapacity = engine.Capacity, previousCapacity = engine.m_previousCapacity;
+                        var engineSource = engine.SourceComp.m_dataPerType.ToArray();
+                        Add(store.Block, () =>
+                        {
+                            if (!restore) engine.Capacity = capacity;
+                            else try { engine.Capacity = capturedCapacity; }
+                            finally
+                            {
+                                engine.m_capacity.m_value = capturedCapacity;
+                                engine.m_previousCapacity = previousCapacity;
+                                engine.SourceComp.m_dataPerType = engineSource;
+                            }
+                        }, b => ((MyObjectBuilder_FueledPowerProducer)b).Capacity = capacity); break;
                     case "Jump":
                         var jump = (MyJumpDrive)block; float stored = ((MyObjectBuilder_JumpDrive)saved[store.Block]).StoredPower;
                         Add(store.Block, () => jump.m_storedPower.SetLocalValue(stored), b => ((MyObjectBuilder_JumpDrive)b).StoredPower = stored);
@@ -106,6 +148,7 @@ internal static class AccountingStockCommit
                 // before and after notifications; it is not independent stored fuel.
                 var builder = (MyObjectBuilder_Reactor)saved[source.Block];
                 float capacity = builder.Capacity;
+                float reactorPrevious = reactor.m_previousCapacity;
                 if (!restore)
                 {
                     capacity = float.MaxValue;
@@ -123,7 +166,12 @@ internal static class AccountingStockCommit
                     }
                     builder.Capacity = capacity;
                 }
-                Add(source.Block, () => { reactor.m_timer.FramesFromLastTrigger = elapsed; reactor.m_timer.TimerTickInFrames = period; reactor.Capacity = capacity; }, b => ((MyObjectBuilder_Reactor)b).Capacity = capacity);
+                Add(source.Block, () =>
+                {
+                    reactor.m_timer.FramesFromLastTrigger = elapsed; reactor.m_timer.TimerTickInFrames = period;
+                    try { reactor.Capacity = capacity; }
+                    finally { if (restore) reactor.m_previousCapacity = reactorPrevious; }
+                }, b => ((MyObjectBuilder_Reactor)b).Capacity = capacity);
             }
             foreach (var production in profile.Production)
             {
@@ -159,28 +207,120 @@ internal static class AccountingStockCommit
             {
                 var zone = (MySafeZoneBlock)blocks[upkeep.Block];
                 var manager = zone.Components.Get<MySafeZoneComponent>() ?? throw new InvalidDataException("Live zone component missing");
-                var component = saved[upkeep.Block].ComponentContainer.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().Single();
-                // The bubble was removed while concealed. Restore paid credit/settings;
-                // native working/allocation and activation own any future protection.
-                bool activating = manager.m_activating; var remaining = manager.m_timeLeft;
+                var component = (MyObjectBuilder_SafeZoneComponent)saved[upkeep.Block].ComponentContainer.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().Single().Clone();
+                long now = MySandboxGame.TotalGamePlayTimeInMilliseconds;
+                var (paidUpkeep, serializedUpkeep) = AccountingStock.ZoneUpkeep(component.UpkeepTime, now);
+                // Keep the raw native input separate from its serialized expected
+                // output. The immutable original rollback basis is never rewritten.
+                if (!restore) saved[upkeep.Block].ComponentContainer.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().Single().UpkeepTime = serializedUpkeep;
+                long paidActivation = checked(now + component.ActivationTime);
+                bool activating = manager.m_activating, processing = manager.m_processingActivation;
+                var remaining = manager.m_timeLeft; var originalUpkeep = manager.m_upkeepTime;
+                long originalActivation = manager.m_safeZoneActivationTimeMS;
+                var zoneSink = zone.ResourceSink.m_dataPerType.ToArray();
+                bool zoneForcePower = zone.ResourceSink.m_forceTriggerPowerChanged;
+                var originalUpdates = zone.NeedsUpdate; bool waiting = manager.WaitingResponse;
+                var bubblePose = new VRage.MyPositionAndOrientation(zone.WorldMatrix).GetMatrix();
+                var initialZones = MyEntities.GetEntities().OfType<MySafeZone>().ToHashSet();
+                MySafeZone created = null;
+                bool protectedZone = false;
+                bool zoneWritten = false;
+                string settings = AccountingStock.ZoneSettings(component.SafeZoneOb as MyObjectBuilder_SafeZone);
+                void ValidateZone()
+                {
+                    if (manager.SafeZoneEntityId != (created?.EntityId ?? 0)
+                        || created != null && (created.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(created.EntityId), created)
+                            || initialZones.Contains(created) || created.SafeZoneBlockId != zone.EntityId || created.Enabled != protectedZone || created.WorldMatrix != bubblePose))
+                        throw new InvalidDataException("Accounting safe zone ownership changed");
+                    if (created != null)
+                    {
+                        var actual = (MyObjectBuilder_SafeZone)created.GetObjectBuilder();
+                        actual.Enabled = false; // retained settings are disabled; live protection is checked separately
+                        if (AccountingStock.ZoneSettings(actual) != settings)
+                            throw new InvalidDataException("Native safe zone settings changed");
+                    }
+                }
+                validate.Add(ValidateZone);
                 Add(upkeep.Block, () =>
                 {
-                    if (restore) manager.SafeZoneRemove_Server();
-                    manager.Deserialize(component);
-                    if (restore) { manager.m_activating = activating; manager.m_timeLeft = remaining; }
-                }, b => b.ComponentContainer.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().Single().SafeZoneOb = component.SafeZoneOb);
+                    if (restore)
+                    {
+                        // Only remove newly allocated bubbles owned by this block.
+                        // A foreign id installed by a callback must never be deleted.
+                        if (MyEntities.TryGetEntityById(manager.SafeZoneEntityId, out MySafeZone own, false)
+                            && !initialZones.Contains(own) && own.SafeZoneBlockId == zone.EntityId) manager.SafeZoneRemove_Server();
+                        else foreach (var bubble in MyEntities.GetEntities().OfType<MySafeZone>().Where(z => !initialZones.Contains(z) && z.SafeZoneBlockId == zone.EntityId).ToArray()) bubble.Close();
+                        manager.m_safeZoneEntityId.Value = 0;
+                    }
+                    manager.Deserialize((MyObjectBuilder_SafeZoneComponent)component.Clone());
+                    zoneWritten = true;
+                    if (restore)
+                    {
+                        manager.m_activating = activating; manager.m_timeLeft = remaining;
+                        manager.m_upkeepTime = originalUpkeep; manager.m_safeZoneActivationTimeMS = originalActivation;
+                        manager.m_processingActivation = processing;
+                        manager.WaitingResponse = waiting; zone.NeedsUpdate = originalUpdates;
+                        zone.ResourceSink.m_dataPerType = zoneSink; zone.ResourceSink.m_forceTriggerPowerChanged = zoneForcePower;
+                    }
+                }, b =>
+                {
+                    var target = b.ComponentContainer.Components.Select(c => c.Component).OfType<MyObjectBuilder_SafeZoneComponent>().Single();
+                    target.SafeZoneOb = component.SafeZoneOb?.Clone() as MyObjectBuilder_EntityBase;
+                    target.UpkeepTime = serializedUpkeep; target.Activating = component.Activating; target.ActivationTime = component.ActivationTime;
+                });
+                notify.Add(() => zone.ResourceSink.Update());
                 notify.Add(() =>
                 {
-                    zone.ResourceSink.Update();
+                    ValidateZone();
                     if (upkeep.Exists && upkeep.Enabled && zone.Enabled && zone.IsFunctional)
                     {
-                        manager.m_activating = false;
-                        manager.m_timeLeft = TimeSpan.FromMilliseconds(upkeep.RemainingFrames * (1000.0 / 60));
-                        manager.SafeZoneCreate_Server();
+                        if (!zone.IsWorking) throw new InvalidDataException("Paid safe zone has no native power");
+                        var savedZone = component.SafeZoneOb as MyObjectBuilder_SafeZone ?? throw new InvalidDataException("Paid safe zone settings missing");
+                        if (savedZone.SafeZoneBlockId != zone.EntityId) throw new InvalidDataException("Paid safe zone belongs to another block");
+                        // Creation owns allocation, settings, sync and activation events.
+                        // Its temporary activation deadline is validated before restoring
+                        // the already-accounted activation remainder, never learned from it.
+                        bool collide = MySessionComponentSafeZones.IsSafeZoneColliding(0, zone.WorldMatrix, MySafeZoneShape.Sphere,
+                            VRageMath.MathHelper.Clamp(savedZone.Radius, MySafeZone.MIN_RADIUS, MySafeZone.MAX_RADIUS));
+                        bool complete = !component.Activating && !collide;
+                        protectedZone = complete;
+                        long nativeActivation = collide ? paidActivation : checked(now + zone.Definition.SafeZoneActivationTimeS * 1000);
+                        try { manager.SafeZoneCreate_Server(skipActivationTimer: complete); }
+                        finally
+                        {
+                            var allocated = MyEntities.GetEntities().OfType<MySafeZone>().Where(z => !initialZones.Contains(z) && z.SafeZoneBlockId == zone.EntityId).ToArray();
+                            if (allocated.Length == 1) created = allocated[0];
+                        }
+                        ValidateZone();
+                        if (created == null || created.Enabled != complete || manager.m_upkeepTime != paidUpkeep
+                            || manager.m_activating != (!collide && !complete) || manager.m_safeZoneActivationTimeMS != nativeActivation
+                            || manager.m_timeLeft != paidUpkeep - TimeSpan.FromMilliseconds(now))
+                            throw new InvalidDataException("Unexpected native safe zone lifecycle result");
+                        manager.m_activating = component.Activating;
+                        manager.m_safeZoneActivationTimeMS = paidActivation;
                     }
+                });
+                validate.Add(() =>
+                {
+                    if (zoneWritten && (manager.m_upkeepTime != paidUpkeep || manager.m_activating != component.Activating
+                        || manager.m_safeZoneActivationTimeMS != paidActivation || manager.m_timeLeft != paidUpkeep - TimeSpan.FromMilliseconds(now)))
+                        throw new InvalidDataException("Native safe zone credit/activation changed");
                 });
             }
         }
-        return new(write.ToArray(), notify.ToArray(), advance.ToArray());
+        // Seal every intermediate expectation before the first native action.
+        // Neither native retained builders nor notification callbacks can rewrite it.
+        var stages = new List<string>();
+        if (stage != null)
+        {
+            stages.Add(AccountingStock.TransactionFingerprint(stage.Values.Cast<MyObjectBuilder_CubeGrid>()));
+            foreach (var next in advance)
+            {
+                next();
+                stages.Add(AccountingStock.TransactionFingerprint(stage.Values.Cast<MyObjectBuilder_CubeGrid>()));
+            }
+        }
+        return new(write.ToArray(), notify.ToArray(), stages.ToArray(),
+            AccountingStock.TransactionFingerprint(builders.Values.Cast<MyObjectBuilder_CubeGrid>()), () => { foreach (var check in validate) check(); });
     }
 }

@@ -174,6 +174,13 @@ surround each structural call, including piston subparts. Invalid callbacks stop
 calls. Settlement checks the same ownership through native writes and inventory
 notifications before publishing a paid receipt; failures roll stocks back while unpaid.
 Each write checks an exact prepared intermediate stock basis, including untouched blocks.
+Transaction expectations are sealed before native calls and do not share builders with
+live stocks. Safe-zone comparison preserves settings, paid upkeep and activation while
+the adapter separately checks the newly allocated bubble's identity and ownership.
+The durable `StockHash` definition is unchanged, so existing unpaid native checkpoints
+retain their original basis. Tank writes use the native server/sync lifecycle, including
+source-capacity refresh. Rollback restores captured reservoir precision, resource caches,
+litre bookkeeping and previous engine capacity; it cannot retract events already delivered.
 Queue recipes remain part of profiling invalidation; authorized settlement completion
 may remove recipes while immutable topology/settings and every stock stage stay checked.
 Native admission permission ends with its OnAddedToWorld call and is revoked before

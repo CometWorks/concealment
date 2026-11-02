@@ -93,7 +93,13 @@ public sealed partial class Probe
         var grids = (IEnumerable<MyCubeGrid>)__0.GetType().GetProperty("Grids").GetValue(__0);
         var bases = grids.SelectMany(g => g.GetFatBlocks<MyMechanicalConnectionBlockBase>()).Where(b => b.Constraint != null).OrderBy(b => b.EntityId).ToArray();
         if (bases.Length == 1 && bases[0] is MyPistonBase piston)
-            piston.m_subpartsConstraint.Enabled = false;
+        {
+            // Deliberate fixture flag mutation. Native Havok setters require
+            // world admission; inactive subparts only carry managed intent.
+            var constraint = piston.m_subpartsConstraint;
+            if (constraint.InWorld) constraint.Enabled = false;
+            else AccessTools.Field(typeof(HkConstraint), "m_enabled").SetValue(constraint, false);
+        }
         else if (bases.Length == 2) bases[1].Constraint.Enabled = false;
         else return;
         mixedCapture = false;

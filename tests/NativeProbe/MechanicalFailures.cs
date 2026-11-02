@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using HarmonyLib;
@@ -20,20 +21,23 @@ public sealed partial class Probe
     private static string recoveryFault;
     private static int faultCallbacks;
     private static MyMechanicalConnectionBlockBase firstLink;
-    private static bool transactionFaultFired;
+    private static bool transactionFaultFired, mixedCapture;
+    private static readonly HashSet<long> subscribed = new();
     private void InitializeMechanicalFailures()
     {
         recoveryFault = System.Environment.GetEnvironmentVariable("EXTRACTION_RECOVERY_FAULT");
         var harmony = new Harmony("ExtractionProbe.mechanical-failures");
         harmony.Patch(AccessTools.Method(PluginType.Assembly.GetType("Shared.Concealment.StandaloneAccounting"), "RestoreMechanicalLinks"),
             prefix: new HarmonyMethod(typeof(Probe), nameof(SubscribeMechanicalFailure)));
+        harmony.Patch(AccessTools.Method(PluginType.Assembly.GetType("Shared.Concealment.StandaloneAccounting"), "Frozen"),
+            prefix: new HarmonyMethod(typeof(Probe), nameof(MixedBeforeHold)));
     }
     private static void SubscribeMechanicalFailure()
     {
         if (string.IsNullOrEmpty(recoveryFault)) return;
         foreach (var block in MyEntities.GetEntities().OfType<MyCubeGrid>().Where(g => g.DisplayName.StartsWith("extract-"))
             .SelectMany(g => g.GetFatBlocks().OfType<MyMechanicalConnectionBlockBase>()))
-            typeof(MyMechanicalConnectionBlockBase).GetEvent("OnAttachmentUpdate").AddEventHandler(block, (Action<MyMechanicalConnectionBlockBase>)MechanicalFailure);
+            if (subscribed.Add(block.EntityId)) typeof(MyMechanicalConnectionBlockBase).GetEvent("OnAttachmentUpdate").AddEventHandler(block, (Action<MyMechanicalConnectionBlockBase>)MechanicalFailure);
     }
     private static void MechanicalFailure(MyMechanicalConnectionBlockBase block)
     {
@@ -73,12 +77,20 @@ public sealed partial class Probe
     }
     private static object MixedConceal()
     {
-        var bases = Named("extract-powered").GetFatBlocks<MyMechanicalConnectionBlockBase>().Where(b => b.Constraint != null).OrderBy(b => b.EntityId).ToArray();
-        if (bases.Length != 2) throw new InvalidOperationException("Expected two native constraints");
-        bases[1].Constraint.Enabled = false;
+        mixedCapture = true;
         var before = Inspect();
         Manager.GetType().GetMethod("ConcealGrids").Invoke(Manager, new object[] { 15000.0 });
         return new { before, after = Inspect() };
+    }
+    private static void MixedBeforeHold(object __0)
+    {
+        if (!mixedCapture) return;
+        var grids = (IEnumerable<MyCubeGrid>)__0.GetType().GetProperty("Grids").GetValue(__0);
+        var bases = grids.SelectMany(g => g.GetFatBlocks<MyMechanicalConnectionBlockBase>()).Where(b => b.Constraint != null).OrderBy(b => b.EntityId).ToArray();
+        if (bases.Length != 2) return;
+        bases[1].Constraint.Enabled = false;
+        mixedCapture = false;
+        FaultTrace("mixed-original-before-hold");
     }
     private static object ArmTransactionFault(string mode)
     {

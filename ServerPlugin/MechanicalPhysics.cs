@@ -30,8 +30,8 @@ internal sealed class MechanicalPhysics
     }
     private readonly Dictionary<long, MyCubeGrid> grids = new();
     private readonly Dictionary<long, Entry> entries = new();
-    private readonly HashSet<HkConstraint> owned = new();
-    private readonly HashSet<HkConstraint> added = new();
+    private readonly HashSet<HkConstraint> owned = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<HkConstraint> added = new(ReferenceEqualityComparer.Instance);
     private MyMechanicalConnectionBlockBase creating;
     private bool invalid, changing, released, complete;
 

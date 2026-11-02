@@ -5,6 +5,8 @@ namespace Havok {
  class HkConstraint {
   bool requested=true,forced;
   public bool IsDisposed,InWorld=true;
+  public override int GetHashCode()=>IsDisposed?0:base.GetHashCode();
+  public override bool Equals(object value)=>ReferenceEquals(this,value)||(IsDisposed&&value is HkConstraint c&&c.IsDisposed);
   public bool Enabled { get=>requested&&!forced; set { bool v=value; foreach(var o in Native.Owners)o.Setting(this,v,false,ref v);requested=v; } }
   public bool ForceDisabled {get=>forced;set {bool v=value;foreach(var o in Native.Owners)o.Setting(this,v,true,ref v);forced=v;} }
  }

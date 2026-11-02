@@ -18,7 +18,7 @@ static class Checks {
   (o,b)=Make();o.ValidateComplete();b[1].Constraint.Enabled=true;Check(!o.Intact&&!b[1].Constraint.Enabled&&b[1].Constraint.ForceDisabled);
   (o,b)=Make();var old=b[1].Constraint;var replacement=new HkConstraint();b[1].Constraint=replacement;replacement.Enabled=true;Check(!o.Intact&&!replacement.Enabled&&!old.Enabled);o.Hold();Check(old.ForceDisabled&&replacement.ForceDisabled);
   (o,b)=Make();b[2].Constraint=new();b[2].Constraint.Enabled=true;Check(!o.Intact&&!b[2].Constraint.Enabled);
-  (o,b)=Make();b[0].Constraint.IsDisposed=true;Check(!o.Intact);
+  (o,b)=Make();b[0].Constraint.IsDisposed=true;Check(!o.Intact);o.Hold();Check(!o.Intact);
   (o,b)=Make();b[0].Constraint.ForceDisabled=false;Check(!o.Intact&&b[0].Constraint.ForceDisabled);
   (o,b)=Make(true);try{o.Structural(b[0],()=>{b[0].Constraint=new();b[0].Constraint.Enabled=true;throw new InvalidOperationException();});}catch(InvalidOperationException){}Check(o.Intact&&!b[0].Constraint.Enabled&&o.Snapshot()[20].Enabled);o.ValidateComplete();o.Release();Check(b[0].Constraint.Enabled);
   (o,b)=Make(true);o.RestoreStates(saved);o.Structural(b[0],()=>{b[0].Constraint=new();b[0].Constraint.Enabled=true;});o.Structural(b[1],()=>{b[1].Constraint=new();b[1].Constraint.Enabled=true;});o.ValidateComplete();o.Release();Check(b[0].Constraint.Enabled&&!b[1].Constraint.Enabled);

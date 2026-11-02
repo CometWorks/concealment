@@ -64,15 +64,17 @@ public sealed partial class Probe
         RecoveryFixtures();
         var grid = Named("extract-powered");
         var builder = MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_MotorStator>("LargeStator");
-        builder.Min = new SerializableVector3I(15, 0, 0);
+        builder.Min = new SerializableVector3I(30, 0, 0);
         var rotor = (MyMotorStator)grid.AddBlock(builder, false).FatBlock;
         rotor.RecreateTop(builder.Owner, instantBuild: true);
         rotor.TargetVelocityRPM = 0;
         ((Sandbox.ModAPI.Ingame.IMyMotorStator)rotor).RotorLock = true;
         rotor.TopGrid.DisplayName = "extract-recovery-top-2";
         var absent = MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_MotorStator>("LargeStator");
-        absent.Min = new SerializableVector3I(20, 0, 0);
-        grid.AddBlock(absent, false);
+        absent.Min = new SerializableVector3I(50, 0, 0);
+        var empty = (MyMotorStator)grid.AddBlock(absent, false).FatBlock;
+        empty.TargetVelocityRPM = 0;
+        ((Sandbox.ModAPI.Ingame.IMyMotorStator)empty).RotorLock = true;
         return Inspect();
     }
     private static object MixedConceal()
@@ -80,7 +82,9 @@ public sealed partial class Probe
         mixedCapture = true;
         var before = Inspect();
         Manager.GetType().GetMethod("ConcealGrids").Invoke(Manager, new object[] { 15000.0 });
-        return new { before, after = Inspect() };
+        return new { before, after = Inspect(), readiness = MyEntities.GetEntities().OfType<MyCubeGrid>().Where(g => g.DisplayName.StartsWith("extract-"))
+            .Select(g => new { grid = g.EntityId, reason = Engine.GetMethod("Readiness", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null, new object[] { g }),
+                velocity = g.Physics?.LinearVelocity.ToString(), acceleration = g.Physics?.LinearAcceleration.ToString() }).ToArray() };
     }
     private static void MixedBeforeHold(object __0)
     {

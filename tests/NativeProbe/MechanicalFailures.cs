@@ -137,9 +137,10 @@ public sealed partial class Probe
         else if (mode == "subpart-replace")
         {
             var piston = (MyPistonBase)block;
+            bool active = piston.m_subpartsConstraint.InWorld;
             var replacement = new HkConstraint(block.CubeGrid.Physics.RigidBody, piston.m_subpartPhysics.RigidBody, new HkFixedConstraintData());
             piston.m_subpartsConstraint = replacement;
-            block.CubeGrid.Physics.AddConstraint(replacement);
+            if (active) block.CubeGrid.Physics.AddConstraint(replacement);
             replacement.Enabled = true;
         }
         else if (mode == "enable") block.Constraint.Enabled = true;

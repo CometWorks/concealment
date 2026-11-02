@@ -134,9 +134,10 @@ internal static partial class AccountingEngine
 			OfflineModel.ValidateClock(p);
 			if (p.ContentHash != ContentHash(p.Definitions)) return new OfflineResult { Group = p.Group, Skipped = "content mismatch", Confidence = "Frozen" };
 			long wake = checked(p.SimulatedThrough + (long)(hours * FramesPerAuthorityHour));
+			SunWorkPath path;
 			try
 			{
-				p.SunPath = ReadSunPath(p, wake);
+				path = ReadSunPath(p, wake);
 			}
 			catch (Exception e) when (p.Schema == OfflineProfile.ClusterSchema && e is InvalidDataException or InvalidOperationException or System.Net.Http.HttpRequestException)
 			{
@@ -145,7 +146,7 @@ internal static partial class AccountingEngine
 				return new OfflineResult { Group = p.Group, FromFrame = p.SimulatedThrough, Skipped = "WA sun/work prediction unavailable: " + e.Message,
 					Confidence = "Frozen", ClockDomain = p.ClockDomain, ClockEpoch = p.ClockEpoch, ClockGeneration = p.ClockGeneration };
 			}
-			return OfflineModel.Simulate(p, wake, MaxFrames);
+			return ModelWithPath(p, wake, path).Result;
 		}).ToArray();
 	}
 

@@ -292,6 +292,7 @@ DEDICATED64=/path/to/DedicatedServer64 dotnet run --project tests/accounting-clo
 python3 tests/accounting-recovery/run.py /absolute/path/to/new/probe-output
 python3 tests/accounting-mechanical/run.py /absolute/path/to/new/mechanical-output
 python3 tests/accounting-physics/run.py /absolute/path/to/new/physics-output
+python3 tests/accounting-prediction/run.py /absolute/path/to/new/prediction-output
 ```
 
 The clock/JSON-boundary check consumes the built production DLL and native DS references. The recovery check extracts
@@ -299,6 +300,10 @@ the exact production recovery/save/admission methods and uses inert native
 collaborators; it is not a native game proof. `tests/NativeProbe` separately
 supports genuine incomplete-root rotor-group reloads and raw-clock live-stock
 prefix references through the actual loaded host.
+The prediction check uses the exact preparation methods and detached model with inert
+session/history transport, covering current-period quality, resource predictions and
+unavailable-history refusal. Predictions share the wake preparation, including its
+Approximate fallback when the saved solar rotation period differs from the current one.
 
 `tests/` holds an in-game test suite. It starts a Magnetar server with this working copy
 of the plugin, joins it with two headless game clients and drives them through the

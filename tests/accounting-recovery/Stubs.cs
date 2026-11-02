@@ -16,7 +16,7 @@ class Group { public List<Node> Nodes; public Group(MyCubeGrid[] grids){Nodes=gr
 class Node { public MyCubeGrid NodeData; }
 class Grouping { readonly Dictionary<long,Group> groups=new(); public void Add(MyCubeGrid[] grids){var g=new Group(grids); foreach(var grid in grids)groups[grid.EntityId]=g;} public Group GetGroup(MyCubeGrid grid)=>groups.GetValueOrDefault(grid.EntityId); }
 class MyCubeGridGroups { public static MyCubeGridGroups Static=new(); public Grouping Physical=new(),Logical=new(); }
-class ConcealGroup { public List<MyCubeGrid> Grids; public long Id=>Grids[0].EntityId; public ConcealGroup(Group g){Grids=g.Nodes.Select(n=>n.NodeData).ToList();} public void HoldMechanicalPhysics(){} public void RestoreProjectors(long[] p){} public static void SuppressUpdates(MyCubeGrid grid,object ignored)=>grid.Suppressed=true; }
+class ConcealGroup { public List<MyCubeGrid> Grids; public long Id=>Grids[0].EntityId; public ConcealGroup(Group g){Grids=g.Nodes.Select(n=>n.NodeData).ToList();} public MechanicalPhysics Physics; public void HoldMechanicalPhysics(){} public void RestoreProjectors(long[] p){} public static void SuppressUpdates(MyCubeGrid grid,object ignored)=>grid.Suppressed=true; }
 class AccountingStock { public static string World="world"; public static void RestoreLoadedEngines(IEnumerable<MyCubeGrid> g,MyObjectBuilder_CubeGrid[] b,string h){} }
 class AccountingMetadata { public const int MaximumBytes=16777216; public static Guid AccountingKey=Guid.NewGuid(); }
 class BlockBuilderEntry { public static string Read(MyObjectBuilder_CubeGrid b,Guid key)=>b.Raw; public static void Write(MyObjectBuilder_CubeGrid b,Guid key,string raw)=>b.Raw=raw; }
@@ -31,4 +31,6 @@ class ConcealmentRuntime { public static ConcealmentRuntime Instance=new(); publ
 
 // Native saved-link reconstruction is exercised by NativeProbe. This probe
 // supplies already established groups and tests the recovery/retention owner.
-partial class Subject { private void RestoreMechanicalLinks((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group) {} }
+partial class Subject { private void RestoreMechanicalLinks((MyCubeGrid Grid, Record Record, MyObjectBuilder_CubeGrid Builder)[] group, MechanicalPhysics owner) {} }
+
+class MechanicalPhysics { public class State {} public MechanicalPhysics(IEnumerable<MyCubeGrid> g){} public void RestoreStates(Dictionary<long,State> states){} public void Hold(){} public void ValidateComplete(){} public Dictionary<long,State> Snapshot()=>new(); }

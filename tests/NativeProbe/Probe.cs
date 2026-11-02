@@ -41,6 +41,7 @@ public sealed partial class Probe : IPlugin
     {
         root = Environment.GetEnvironmentVariable("EXTRACTION_PROBE_ROOT"); Directory.CreateDirectory(root);
         InitializeMechanicalTrace();
+        InitializeMechanicalFailures();
         string reference = Environment.GetEnvironmentVariable("EXTRACTION_CLUSTER_REFERENCE");
         if (!string.IsNullOrEmpty(reference))
         {
@@ -89,6 +90,12 @@ public sealed partial class Probe : IPlugin
             case "recovery-fixtures": return RecoveryFixtures();
             case "piston-fixtures": return PistonFixtures();
             case "piston-top": return PistonTop();
+            case "two-link-fixtures": return TwoLinkFixtures();
+            case "mixed-conceal": return MixedConceal();
+            case "transaction-fault": return ArmTransactionFault(r.GetProperty("mode").GetString());
+            case "mechanical-fault":
+                ChangeMechanical(Named("extract-powered").GetFatBlocks<MyMechanicalConnectionBlockBase>().First(b => b.Constraint != null), r.GetProperty("mode").GetString());
+                return Inspect();
             case "manager-failure": return ArmManagerFailure();
             case "admission": return RecoveryAdmission(r.GetProperty("name").GetString());
             case "world-unload":

@@ -16,7 +16,7 @@ def section(start):
         i += 1
     return s[a:i]
 parts = [section(x) for x in ('private sealed class Record', 'private void Restore(', 'private void Save(',
-    'internal void Update()', 'private void RecoverPending()', 'internal void Stop()', 'public void Dispose()', 'private void RejectRecovery(', 'private static MyCubeGrid[][] Groups', 'internal bool TryBegin(')]
+    'internal void Update()', 'private void RecoverPending()', 'internal void Stop()', 'public void Dispose()', 'private void RejectRecovery(', 'private static MyCubeGrid[][] Groups', 'internal bool TryBegin(', 'private MechanicalPhysics Protect(')]
 parts += [s[s.index('private bool HasClaim('):s.index('private static MyCubeGrid[][] Groups')].strip(),
           s[s.index('internal bool Blocks('):s.index('internal bool TryBegin(')].strip(),
           s[s.index('private static StandaloneAccounting Current =>'):s.index('private static void MeasureRefinery')].replace('StandaloneAccounting', 'Subject').strip()]

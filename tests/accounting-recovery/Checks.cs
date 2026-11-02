@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 partial class Subject {
+ readonly List<MechanicalPhysics> physics=new();
+
  readonly ConcurrentDictionary<long,Record> records=new();
  readonly ConcurrentDictionary<long,string> opaque=new();
  readonly ConcurrentDictionary<long,(MyCubeGrid Grid,Record Record,MyObjectBuilder_CubeGrid Builder)> restored=new();

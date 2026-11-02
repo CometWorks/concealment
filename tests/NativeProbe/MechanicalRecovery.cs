@@ -51,6 +51,10 @@ public sealed partial class Probe
             target = ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId,
             top = b.TopBlock?.EntityId, topGrid = b.TopGrid?.EntityId, parent = b.TopBlock?.Stator?.EntityId,
             flags = (int)b.Flags, needsUpdate = b.NeedsUpdate.ToString(), b.UpdateAttach, b.NeedReattach,
+            subpartsReady = b is MyPistonBase piston ? (bool?)(piston.Subpart3 != null) : null,
+            constraintEnabled = b.Constraint?.Enabled, constraintForced = b.Constraint?.ForceDisabled,
+            constraintIdentity = b.Constraint == null ? (int?)null : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(b.Constraint),
+            constraintDisposed = b.Constraint?.IsDisposed,
             physics = b.CubeGrid.Physics?.Enabled,
         }).ToArray();
     private static object PistonFixtures()

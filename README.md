@@ -158,6 +158,26 @@ Complete saved mechanical groups reconnect only their reciprocal saved native
 base/top IDs on the owning game thread before topology validation. Rotor and piston
 structural attachment runs with production/update guards retained; missing or changed
 targets, foreign loaded membership and changed stocks still quarantine the claim.
+A world-owned mechanical hold starts before structural calls and survives failed
+recovery, stopped scheduling and plugin disposal. It snapshots every base's constraint
+identity, including disabled constraints and absence. Native assignments are acquired
+before publication; Havok ForceDisabled protects owned objects even when a callback
+requests enabling. Complete original block/link/claim/closure, stock and pose checks
+surround each structural call, including piston subparts. Invalid callbacks stop later
+calls. Settlement checks the same ownership through native writes and inventory
+notifications before publishing a paid receipt; failures roll stocks back while unpaid.
+
+New standalone records include private `Mechanical` state on the root row, with
+required Present/Enabled/ForceDisabled fields per base. It preserves originally disabled
+constraints across native saves/reloads; it does not change shared profile schema 2 or
+accounting contract 2. Older claims have no historical ephemeral-constraint state. They
+retain their supported native reconstruction path: record the actual native requested
+state observed during reconstruction, including a native callback leaving it disabled.
+That migration cannot recover an unrecorded historical disabled flag, and makes no such
+claim. Subsequent saves carry the observed state explicitly. Do not downgrade a world
+with new mechanical records: older binaries ignore this ownership and can force enable
+on reveal. Roll back the matching pre-upgrade world and plugin/package together.
+
 Reconstructed constraints stay disabled until paid reveal, keeping native solver
 jitter out of the held checkpoint. Pose validation accepts only the original pose
 or its exact native cluster-local float round trip; the original profile/pose
@@ -224,6 +244,7 @@ Targeted accounting checks (build the server plugin first):
 DEDICATED64=/path/to/DedicatedServer64 dotnet run --project tests/accounting-clock/ClockChecks.csproj -c Release
 python3 tests/accounting-recovery/run.py /absolute/path/to/new/probe-output
 python3 tests/accounting-mechanical/run.py /absolute/path/to/new/mechanical-output
+python3 tests/accounting-physics/run.py /absolute/path/to/new/physics-output
 ```
 
 The clock/JSON-boundary check consumes the built production DLL and native DS references. The recovery check extracts

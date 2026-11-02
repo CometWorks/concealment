@@ -28,26 +28,11 @@ public sealed class ConcealGroup
 
     private readonly HashSet<long> projectors = new HashSet<long>();
 #if MAGNETAR
-    private readonly List<(MyMechanicalConnectionBlockBase Block, Havok.HkConstraint Constraint)> heldConstraints = new();
-    internal bool HoldsMechanicalPhysics => heldConstraints.Count > 0;
-    internal bool MechanicalPhysicsIntact => heldConstraints.All(held => ReferenceEquals(held.Block.Constraint, held.Constraint)
-        && !held.Constraint.IsDisposed && !held.Constraint.Enabled);
+    internal MechanicalPhysics Physics { get; set; }
+    internal bool HoldsMechanicalPhysics => Physics != null;
+    internal bool MechanicalPhysicsIntact => Physics?.Intact ?? true;
 
-    internal void HoldMechanicalPhysics()
-    {
-        foreach (var block in Grids.SelectMany(g => g.GetFatBlocks()).OfType<MyMechanicalConnectionBlockBase>())
-            if (block.Constraint?.Enabled == true)
-            {
-                heldConstraints.Add((block, block.Constraint));
-                block.Constraint.Enabled = false;
-            }
-        if (heldConstraints.Count == 0) return;
-        foreach (var grid in Grids)
-        {
-            grid.Physics?.RigidBody?.Deactivate();
-            grid.Physics?.RigidBody2?.Deactivate();
-        }
-    }
+    internal void HoldMechanicalPhysics() => Physics ??= new MechanicalPhysics(Grids);
 #endif
 
     public long Id { get; }
@@ -161,12 +146,8 @@ public sealed class ConcealGroup
     {
         if (ConcealmentRuntime.ClusterMode) return;
 #if MAGNETAR
-        foreach (var held in heldConstraints)
-            if (!ReferenceEquals(held.Block.Constraint, held.Constraint) || held.Constraint.IsDisposed)
-                throw new InvalidOperationException("Held mechanical constraint changed before reveal");
-        foreach (var held in heldConstraints)
-            held.Constraint.Enabled = true;
-        heldConstraints.Clear();
+        Physics?.Release();
+        Physics = null;
 #endif
         foreach (var grid in Grids)
             if (grid.Parent == null)

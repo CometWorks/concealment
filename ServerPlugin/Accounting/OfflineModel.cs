@@ -265,7 +265,8 @@ internal static class OfflineModel
 			{
 				var source = profile.Sources[i];
 				if (source.FuelTickFrames <= 0) continue;
-				if (source.FuelTier2AfterFrames >= 0)
+				// Native zero is an inactive timer, not a scheduled Tier2 transition.
+				if (source.FuelTier2AfterFrames > 0)
 				{
 					source.FuelTier2AfterFrames = Math.Max(0, source.FuelTier2AfterFrames - step);
 					if (source.FuelTier2AfterFrames <= Epsilon)

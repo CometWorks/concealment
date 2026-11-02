@@ -29,6 +29,19 @@ foreach(double oldClock in new[]{.016,1d/60}){
 }
 var oneHour=Basis();var hour=OfflineModel.Simulate(oneHour,oneHour.SimulatedThrough+225000,225000);
 Check(Math.Abs(hour.ProducerEnergyMWh[1]-25d/24)<1e-12,"native 1MW world hour is 1.0416666667 resource MWh");
+OfflineProfile FuelTimer(double countdown)=>new(){Group=1,Members=[1],
+ Sources=[new(){Block=1,Kind="Reactor",Resource=OfflineModel.Electricity,Maximum=1,
+ FuelTickFrames=1800,FuelElapsedFrames=800,FuelTier2TickFrames=3600,FuelTier2AfterFrames=countdown}],
+ Sinks=[new(){Block=2,Resource=OfflineModel.Electricity,Required=1}]};
+foreach(double inactive in new[]{0d,-1d}){
+ var timer=FuelTimer(inactive);OfflineModel.Simulate(timer,1200,1200);
+ Check(timer.Sources[0].FuelTickFrames==1800&&timer.Sources[0].FuelTier2AfterFrames==inactive,"inactive native tier timer must preserve period and transition intent");
+ Check(timer.Sources[0].FuelElapsedFrames==200,"inactive native tier timer keeps the 1000-update debit boundary");
+}
+var scheduled=FuelTimer(100);OfflineModel.Simulate(scheduled,50,50);
+Check(scheduled.Sources[0].FuelTier2AfterFrames==50&&scheduled.Sources[0].FuelTickFrames==1800,"positive tier countdown remains scheduled before expiry");
+OfflineModel.Simulate(scheduled,100,50);
+Check(scheduled.Sources[0].FuelTier2AfterFrames==-1&&scheduled.Sources[0].FuelTickFrames==3600&&scheduled.Sources[0].FuelElapsedFrames==900,"positive tier countdown switches period only on scheduled expiry, preserving fuel phase");
 var invalid=Basis();invalid.ClockFrameSeconds=.016;Refuses(invalid,"schema2 cannot carry legacy discriminator");
 invalid=Basis();invalid.Schema=1;invalid.ClockFrameSeconds=.02;Refuses(invalid,"unknown legacy clock refused");
 invalid=Basis();invalid.Schema=3;Refuses(invalid,"future schema refused");

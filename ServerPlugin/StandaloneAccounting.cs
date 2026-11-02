@@ -271,11 +271,13 @@ internal sealed class StandaloneAccounting : IDisposable
         var saved = group.SelectMany(g => g.Builder.CubeBlocks.Select(b => (Grid: g.Grid, Block: b))).Where(b => b.Block.EntityId != 0).ToDictionary(b => b.Block.EntityId);
         var blocks = grids.Values.SelectMany(g => g.GetFatBlocks()).ToDictionary(b => b.EntityId);
         var links = new List<(MyMechanicalConnectionBlockBase Base, MyAttachableTopBlockBase Top)>();
+        var completedLinks = new HashSet<long>();
         void ValidateBlocks()
         {
             var current = grids.Values.SelectMany(g => g.GetFatBlocks()).ToArray();
             if (current.Length != blocks.Count || current.Any(b => !blocks.TryGetValue(b.EntityId, out var original) || !ReferenceEquals(original, b)
-                || b.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(b.EntityId), b)))
+                || b.MarkedForClose || !ReferenceEquals(MyEntities.GetEntityById(b.EntityId), b)
+                || !saved.TryGetValue(b.EntityId, out var entry) || !ReferenceEquals(b.CubeGrid, entry.Grid)))
                 throw new InvalidDataException("Loaded block identity changed during recovery");
             foreach (var entry in saved.Values)
             {
@@ -289,7 +291,9 @@ internal sealed class StandaloneAccounting : IDisposable
                     if (mechanical.TopBlockId is > 0)
                     {
                         if (!blocks.TryGetValue(mechanical.TopBlockId.Value, out var target) || target is not MyAttachableTopBlockBase top
-                            || connection.TopBlock != null && !ReferenceEquals(connection.TopBlock, top) || top.Stator != null && !ReferenceEquals(top.Stator, connection))
+                            || connection.TopBlock != null && (!ReferenceEquals(connection.TopBlock, top) || !ReferenceEquals(top.Stator, connection) || !connection.IsAttached)
+                            || completedLinks.Contains(connection.EntityId) && !ReferenceEquals(connection.TopBlock, top)
+                            || top.Stator != null && !ReferenceEquals(top.Stator, connection))
                             throw new InvalidDataException("Loaded mechanical reciprocal link changed");
                     }
                 }
@@ -379,6 +383,7 @@ internal sealed class StandaloneAccounting : IDisposable
             ValidateBasis();
             if (link.Base.TopBlock != link.Top || link.Top.Stator != link.Base || !link.Base.IsAttached)
                 throw new InvalidDataException("Native saved mechanical attachment did not complete");
+            completedLinks.Add(link.Base.EntityId);
         }
         ValidateBasis();
     }

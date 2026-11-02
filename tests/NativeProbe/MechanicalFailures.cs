@@ -37,10 +37,11 @@ public sealed partial class Probe
         if (string.IsNullOrEmpty(recoveryFault)) return;
         foreach (var block in MyEntities.GetEntities().OfType<MyCubeGrid>().Where(g => g.DisplayName.StartsWith("extract-"))
             .SelectMany(g => g.GetFatBlocks().OfType<MyMechanicalConnectionBlockBase>()))
-            if (subscribed.Add(block.EntityId)) typeof(MyMechanicalConnectionBlockBase).GetEvent("OnAttachmentUpdate").AddEventHandler(block, (Action<MyMechanicalConnectionBlockBase>)MechanicalFailure);
+            if (subscribed.Add(block.EntityId)) typeof(MyMechanicalConnectionBlockBase).GetEvent("OnAttachmentUpdate").AddEventHandler(block, (Action<Sandbox.ModAPI.IMyMechanicalConnectionBlock>)MechanicalFailure);
     }
-    private static void MechanicalFailure(MyMechanicalConnectionBlockBase block)
+    private static void MechanicalFailure(Sandbox.ModAPI.IMyMechanicalConnectionBlock connection)
     {
+        var block = (MyMechanicalConnectionBlockBase)connection;
         if (block.TopBlock == null) return;
         faultCallbacks++;
         firstLink ??= block;

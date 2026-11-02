@@ -27,6 +27,7 @@ static class Checks {
   (o,b)=Make();b[0].Constraint.IsDisposed=true;Check(!o.Intact);o.Hold();Check(!o.Intact);
   (o,b)=Make();b[0].Constraint.ForceDisabled=false;Check(!o.Intact&&b[0].Constraint.ForceDisabled);
   (o,b)=Make(true);try{o.Structural(b[0],()=>{b[0].Constraint=new();b[0].Constraint.Enabled=true;throw new InvalidOperationException();});}catch(InvalidOperationException){}Check(o.Intact&&!b[0].Constraint.Enabled&&o.Snapshot()[20].Enabled);o.ValidateComplete();o.AuthorizeRelease();o.Release();Check(b[0].Constraint.Enabled);
+  (o,b)=Make(true);o.Structural(b[0],()=>{var created=new HkConstraint{InWorld=false,RigidBodyA=b[0].CubeGrid.Physics.RigidBody};o.Constructed(created);b[0].Constraint=created;created.InWorld=true;o.Added(created);created.Enabled=true;});o.ValidateComplete();o.AuthorizeRelease();o.Release();Check(b[0].Constraint.Enabled&&!b[0].Constraint.ForceDisabled);
   (o,b)=Make(true);o.RestoreStates(saved);o.Structural(b[0],()=>{b[0].Constraint=new();b[0].Constraint.Enabled=true;});o.Structural(b[1],()=>{b[1].Constraint=new();b[1].Constraint.Enabled=true;});o.ValidateComplete();o.AuthorizeRelease();o.Release();Check(b[0].Constraint.Enabled&&!b[1].Constraint.Enabled);
   (o,b)=Make();o.ValidateComplete();b[0].Target=999;Check(!o.Intact);
   bool rejected=false;try{JsonSerializer.Deserialize<MechanicalPhysics.State>("{}",new JsonSerializerOptions{IncludeFields=true});}catch(JsonException){rejected=true;}Check(rejected);

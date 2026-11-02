@@ -34,7 +34,7 @@ internal sealed class MechanicalPhysics
     }
     private readonly Dictionary<long, MyCubeGrid> grids = new();
     private readonly Dictionary<long, Entry> entries = new();
-    private readonly HashSet<HkConstraint> owned = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HkConstraint, State> owned = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<HkConstraint> added = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<HkConstraint, State> releasePending = new(ReferenceEqualityComparer.Instance);
     private static readonly System.Reflection.FieldInfo EnabledField = typeof(HkConstraint).GetField("m_enabled", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
@@ -104,10 +104,10 @@ internal sealed class MechanicalPhysics
             return released && releasePending.Count == 0;
         }
     }
-    internal bool UnpaidOwns(HkConstraint constraint) => !released && owned.Contains(constraint);
+    internal bool UnpaidOwns(HkConstraint constraint) => !released && owned.ContainsKey(constraint);
     internal bool HasBlocks => entries.Count != 0;
     internal bool Intact => !released && !invalid
-        && owned.All(c => c.IsDisposed || entries.Values.Any(e => ReferenceEquals(e.Expected, c) || ReferenceEquals(e.Subpart, c)))
+        && owned.Keys.All(c => c.IsDisposed || entries.Values.Any(e => ReferenceEquals(e.Expected, c) || ReferenceEquals(e.Subpart, c)))
         && Blocks().Count() == entries.Count && Blocks().All(b => entries.TryGetValue(b.EntityId, out var e)
         && ReferenceEquals(e.Block, b) && !b.MarkedForClose && ReferenceEquals(MyEntities.GetEntityById(b.EntityId), b)
         && ((MyObjectBuilder_MechanicalConnectionBlock)b.GetObjectBuilderCubeBlock()).TopBlockId == e.Target
@@ -127,7 +127,7 @@ internal sealed class MechanicalPhysics
             if (ReferenceEquals(creating, entry.Block) && entry.Subpart == null && constraint != null)
             {
                 entry.Subpart = constraint; entry.SubpartInWorld = constraint.InWorld;
-                if (!entry.Durable) entry.State.Subparts = Read(constraint);
+                if (!entry.Durable) entry.State.Subparts = owned.TryGetValue(constraint, out var original) ? original : Read(constraint);
                 else if (!entry.State.Subparts.Present) invalid = true;
             }
             else invalid = true;
@@ -145,7 +145,7 @@ internal sealed class MechanicalPhysics
     private void Own(HkConstraint constraint)
     {
         if (constraint == null) return;
-        owned.Add(constraint);
+        if (!owned.ContainsKey(constraint)) owned.Add(constraint, Read(constraint));
         if (constraint.IsDisposed) { invalid = true; return; }
         if (!constraint.InWorld && !added.Contains(constraint))
         {
@@ -178,7 +178,7 @@ internal sealed class MechanicalPhysics
                 if (!entry.Durable)
                 {
                     var subparts = entry.State.Subparts;
-                    entry.State = Read(constraint); entry.State.Subparts = subparts;
+                    entry.State = owned.TryGetValue(constraint, out var original) ? original : Read(constraint); entry.State.Subparts = subparts;
                 }
                 else if (!entry.State.Present) invalid = true;
             }
@@ -201,7 +201,7 @@ internal sealed class MechanicalPhysics
             }
             return;
         }
-        if (!owned.Contains(constraint)) return;
+        if (!owned.ContainsKey(constraint)) return;
         added.Add(constraint);
         foreach (var entry in entries.Values.Where(e => ReferenceEquals(e.Subpart, constraint)))
         {
@@ -210,10 +210,10 @@ internal sealed class MechanicalPhysics
         }
         Own(constraint);
     }
-    internal bool CanSet(HkConstraint constraint) => released || !owned.Contains(constraint) || !constraint.IsDisposed && (constraint.InWorld || added.Contains(constraint));
+    internal bool CanSet(HkConstraint constraint) => released || !owned.ContainsKey(constraint) || !constraint.IsDisposed && (constraint.InWorld || added.Contains(constraint));
     internal void Setting(HkConstraint constraint, bool value, bool force, ref bool allowed)
     {
-        if (changing || released || !owned.Contains(constraint)) return;
+        if (changing || released || !owned.ContainsKey(constraint)) return;
         if (force)
         {
             if (!value) invalid = true;
@@ -246,7 +246,7 @@ internal sealed class MechanicalPhysics
             // Also acquire when a native implementation bypasses its property.
             foreach (var current in Blocks())
             {
-                if (current.Constraint != null && !owned.Contains(current.Constraint)) Assign(current, current.Constraint);
+                if (current.Constraint != null && !owned.ContainsKey(current.Constraint)) Assign(current, current.Constraint);
                 if (current is MyPistonBase piston) Subpart(entries[current.EntityId], piston.m_subpartsConstraint);
             }
             creating = null;
@@ -264,7 +264,7 @@ internal sealed class MechanicalPhysics
                 if (!ReferenceEquals(entry.Subpart, piston.m_subpartsConstraint)) invalid = true;
                 Own(piston.m_subpartsConstraint);
             }
-        foreach (var constraint in owned)
+        foreach (var constraint in owned.Keys)
             if (!constraint.IsDisposed) Own(constraint);
         if (!HasBlocks) return;
         foreach (var grid in grids.Values)

@@ -114,6 +114,8 @@ internal sealed class OfflineStorage
 	public double IdlePower = -1, OperationalPower;
 	public bool Transferring; // retained operational demand, reset by native flow/working callbacks
 	// Native batteries sample current input/output on Update100, like reactor fuel.
+	// New captures retain that phase for all batteries; zero preserves the older
+	// continuous contract. Near-full Auto and fast feedback use sampled settlement.
 	public double TickFrames, ElapsedFrames, AccountedEnergy;
 	public bool Sampling;
 }

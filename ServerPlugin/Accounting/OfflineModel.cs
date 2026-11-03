@@ -130,6 +130,16 @@ internal static class OfflineModel
 			// steady flow on the existing integral; finish any timer interval a cycle entered.
 			if (feedback?.Cycling == true)
 				foreach (var store in profile.Storage.Where(s => s.TickFrames > 0 && !s.Creative)) store.Sampling = true;
+			// Near full, native Auto charging/discharging switches on Update100 and
+			// rounds stored power to float. A continuous equilibrium invents a tiny
+			// steady recharge demand and loses the reactor's sampled fuel cost.
+			for (int i = 0; i < profile.Storage.Count; i++)
+			{
+				var store = profile.Storage[i];
+				if (!store.Creative && store.Kind == "Battery" && store.Mode == 0 && store.TickFrames > 0 && store.Enabled
+					&& (store.Full || store.Capacity - store.Amount < store.MaxInput / 2160)
+					&& (charging[i] > Epsilon || Enumerable.Range(0, output.Length).Any(j => profile.Sources[j].Storage == i && output[j] > Epsilon))) store.Sampling = true;
+			}
 			// NPC creative batteries ignore delivered power. Auto/Recharge refill on
 			// their real Update100 phase even without input; Discharge never refills.
 			foreach (var store in profile.Storage.Where(s => s.Creative))

@@ -52,8 +52,11 @@ Check(emptyDischarge.Storage[0].Amount == 0 && blackout.ConsumerEnergyMWh[2] == 
 foreach (int mode in new[] { 0, 2 })
 {
     var finite = Battery(false, mode); double before = finite.Storage[0].Amount;
+    // Historical finite profiles keep the continuous contract. Native sampled
+    // Auto captures have a retained real-engine oracle in accounting-auto.
+    finite.Storage[0].TickFrames = 0;
     OfflineModel.Simulate(finite, 3600, 3600);
-    Check(Math.Abs(before - finite.Storage[0].Amount - .1 * 3600 / 216000) < 1e-12, "normal/forced-Survival battery retains delivered power cost");
+    Check(Math.Abs(before - finite.Storage[0].Amount - .1 * 3600 / 216000) < 1e-12, "legacy normal/forced-Survival battery retains delivered power cost");
 }
 var legacy = Battery(false, 2);
 var legacyJson = JsonNode.Parse(JsonSerializer.Serialize(legacy, OfflineProfile.Json))!; legacyJson["Storage"]![0]!.AsObject().Remove("Creative");

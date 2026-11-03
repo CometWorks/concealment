@@ -1,0 +1,1401 @@
+{
+  "sourceSha256": "fb324af1276319703184b5ccfcc4a9f2682ecfa6afe309eb7b840e981fdbca7d",
+  "sourceScope": "Native DS1210014 exact1350000update reference, current2d70a85 core; synthetic finite fixture, no oracle edits",
+  "rows": [
+    {
+      "name": "battery-mode-0",
+      "frames": 1350000,
+      "initial": {
+        "ClockDomain": null,
+        "ClockEpoch": null,
+        "ClockGeneration": 0,
+        "SunClockTicks": null,
+        "Schema": 2,
+        "Group": 85572950577659538,
+        "Members": [
+          85572950577659538
+        ],
+        "ContentHash": "393BB3D6B778A2351C525522431CAC579100EE288B0C3D173DF4DC416A0CE200",
+        "Definitions": [
+          "MyObjectBuilder_BatteryBlock/LargeBlockBatteryBlock",
+          "MyObjectBuilder_Ingot/Uranium",
+          "MyObjectBuilder_InteriorLight/LargeBlockLight_1corner",
+          "MyObjectBuilder_RadioAntenna/LargeBlockRadioAntenna",
+          "MyObjectBuilder_Reactor/LargeBlockSmallGenerator",
+          "MyObjectBuilder_ResourceDistributionGroup/AIBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Battery",
+          "MyObjectBuilder_ResourceDistributionGroup/BatteryBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Charging",
+          "MyObjectBuilder_ResourceDistributionGroup/Conveyors",
+          "MyObjectBuilder_ResourceDistributionGroup/Defense",
+          "MyObjectBuilder_ResourceDistributionGroup/DefenseAdative",
+          "MyObjectBuilder_ResourceDistributionGroup/Doors",
+          "MyObjectBuilder_ResourceDistributionGroup/Factory",
+          "MyObjectBuilder_ResourceDistributionGroup/Generators",
+          "MyObjectBuilder_ResourceDistributionGroup/Gyro",
+          "MyObjectBuilder_ResourceDistributionGroup/LifeSupport",
+          "MyObjectBuilder_ResourceDistributionGroup/Reactors",
+          "MyObjectBuilder_ResourceDistributionGroup/SafeZoneBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/SolarPanels",
+          "MyObjectBuilder_ResourceDistributionGroup/Thrust",
+          "MyObjectBuilder_ResourceDistributionGroup/Utility"
+        ],
+        "FrozenFrame": 35570,
+        "SimulatedThrough": 35570,
+        "ClockFrameSeconds": 0.016666666666666666,
+        "SunFrame": 35570,
+        "SunPeriodFrames": 0,
+        "ResourceFrameRemaining": 1,
+        "Creative": false,
+        "Simplified": false,
+        "Confidence": "Exact",
+        "Unknowns": [],
+        "Inventories": [
+          {
+            "Block": 129273595199333408,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 9.998236
+              }
+            ]
+          }
+        ],
+        "Items": {
+          "MyObjectBuilder_Ingot/Uranium": {
+            "Volume": 5.2e-05,
+            "Mass": 1,
+            "Integral": false
+          }
+        },
+        "Sinks": [
+          {
+            "Block": 79611179565029922,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 82165538471998613,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 0.20000000298023224
+          },
+          {
+            "Block": 96513963150141115,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 99315075549973691,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 132933795414468947,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 85572950577659538,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Conveyors",
+            "Priority": 20,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 1.0000000116860974e-07
+          },
+          {
+            "Block": 85572950577659538,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Gyro",
+            "Priority": 70,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 0
+          }
+        ],
+        "Sources": [
+          {
+            "Block": 88215813661662849,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 12,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 0,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 129273595199333408,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Reactors",
+            "Kind": "Reactor",
+            "Priority": 3,
+            "Maximum": 15,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": -1,
+            "StorageCost": 0,
+            "Fuel": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 4.62962987108363e-06,
+                "Inventories": [
+                  0
+                ]
+              }
+            ],
+            "FuelTickFrames": 1800,
+            "FuelElapsedFrames": 800,
+            "FuelTier2TickFrames": 3600,
+            "FuelTier2AfterFrames": 35100,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 141954344419129417,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 12,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 1,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          }
+        ],
+        "Storage": [
+          {
+            "Block": 88215813661662849,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 2.9999537467956543,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 0,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 94,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 141954344419129417,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 2.9999537467956543,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 0,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 95,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Production": [],
+        "Upkeep": [],
+        "Observations": []
+      },
+      "actual": {
+        "Storage": [
+          {
+            "Block": 88215813661662849,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 2.9999537467956543,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 0,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 94,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 141954344419129417,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 2.9999537467956543,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 0,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 95,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Inventories": [
+          {
+            "Block": 129273595199333408,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 8.685524
+              }
+            ]
+          }
+        ]
+      },
+      "legacyExpectedFuel": 8.7036
+    },
+    {
+      "name": "battery-mode-1",
+      "frames": 1350000,
+      "initial": {
+        "ClockDomain": null,
+        "ClockEpoch": null,
+        "ClockGeneration": 0,
+        "SunClockTicks": null,
+        "Schema": 2,
+        "Group": 116045599818813352,
+        "Members": [
+          116045599818813352
+        ],
+        "ContentHash": "393BB3D6B778A2351C525522431CAC579100EE288B0C3D173DF4DC416A0CE200",
+        "Definitions": [
+          "MyObjectBuilder_BatteryBlock/LargeBlockBatteryBlock",
+          "MyObjectBuilder_Ingot/Uranium",
+          "MyObjectBuilder_InteriorLight/LargeBlockLight_1corner",
+          "MyObjectBuilder_RadioAntenna/LargeBlockRadioAntenna",
+          "MyObjectBuilder_Reactor/LargeBlockSmallGenerator",
+          "MyObjectBuilder_ResourceDistributionGroup/AIBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Battery",
+          "MyObjectBuilder_ResourceDistributionGroup/BatteryBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Charging",
+          "MyObjectBuilder_ResourceDistributionGroup/Conveyors",
+          "MyObjectBuilder_ResourceDistributionGroup/Defense",
+          "MyObjectBuilder_ResourceDistributionGroup/DefenseAdative",
+          "MyObjectBuilder_ResourceDistributionGroup/Doors",
+          "MyObjectBuilder_ResourceDistributionGroup/Factory",
+          "MyObjectBuilder_ResourceDistributionGroup/Generators",
+          "MyObjectBuilder_ResourceDistributionGroup/Gyro",
+          "MyObjectBuilder_ResourceDistributionGroup/LifeSupport",
+          "MyObjectBuilder_ResourceDistributionGroup/Reactors",
+          "MyObjectBuilder_ResourceDistributionGroup/SafeZoneBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/SolarPanels",
+          "MyObjectBuilder_ResourceDistributionGroup/Thrust",
+          "MyObjectBuilder_ResourceDistributionGroup/Utility"
+        ],
+        "FrozenFrame": 35570,
+        "SimulatedThrough": 35570,
+        "ClockFrameSeconds": 0.016666666666666666,
+        "SunFrame": 35570,
+        "SunPeriodFrames": 0,
+        "ResourceFrameRemaining": 1,
+        "Creative": false,
+        "Simplified": false,
+        "Confidence": "Exact",
+        "Unknowns": [],
+        "Inventories": [
+          {
+            "Block": 133358216422933693,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 9.875
+              }
+            ]
+          }
+        ],
+        "Items": {
+          "MyObjectBuilder_Ingot/Uranium": {
+            "Volume": 5.2e-05,
+            "Mass": 1,
+            "Integral": false
+          }
+        },
+        "Sinks": [
+          {
+            "Block": 78892341463887436,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 109394494808856092,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 0.20000000298023224
+          },
+          {
+            "Block": 110370627923111256,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 124085309275687157,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 137309364069769754,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 116045599818813352,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Conveyors",
+            "Priority": 20,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 1.0000000116860974e-07
+          },
+          {
+            "Block": 116045599818813352,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Gyro",
+            "Priority": 70,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 0
+          }
+        ],
+        "Sources": [
+          {
+            "Block": 76806947473198220,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 0,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 0,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 112402902009230352,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 0,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 1,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 133358216422933693,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Reactors",
+            "Kind": "Reactor",
+            "Priority": 3,
+            "Maximum": 15,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": -1,
+            "StorageCost": 0,
+            "Fuel": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 4.62962987108363e-06,
+                "Inventories": [
+                  0
+                ]
+              }
+            ],
+            "FuelTickFrames": 1800,
+            "FuelElapsedFrames": 800,
+            "FuelTier2TickFrames": 3600,
+            "FuelTier2AfterFrames": 35100,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          }
+        ],
+        "Storage": [
+          {
+            "Block": 76806947473198220,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 1.5221177339553833,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 1,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 93,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 112402902009230352,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 1.52214515209198,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 1,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 92,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Production": [],
+        "Upkeep": [],
+        "Observations": []
+      },
+      "actual": {
+        "Storage": [
+          {
+            "Block": 76806947473198220,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 3,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 1,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": true,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 93,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 112402902009230352,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 3,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 1,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": true,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 92,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Inventories": [
+          {
+            "Block": 133358216422933693,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 5.04796
+              }
+            ]
+          }
+        ]
+      },
+      "legacyExpectedFuel": 5.04796
+    },
+    {
+      "name": "battery-mode-2",
+      "frames": 1350000,
+      "initial": {
+        "ClockDomain": null,
+        "ClockEpoch": null,
+        "ClockGeneration": 0,
+        "SunClockTicks": null,
+        "Schema": 2,
+        "Group": 131067209858426176,
+        "Members": [
+          131067209858426176
+        ],
+        "ContentHash": "393BB3D6B778A2351C525522431CAC579100EE288B0C3D173DF4DC416A0CE200",
+        "Definitions": [
+          "MyObjectBuilder_BatteryBlock/LargeBlockBatteryBlock",
+          "MyObjectBuilder_Ingot/Uranium",
+          "MyObjectBuilder_InteriorLight/LargeBlockLight_1corner",
+          "MyObjectBuilder_RadioAntenna/LargeBlockRadioAntenna",
+          "MyObjectBuilder_Reactor/LargeBlockSmallGenerator",
+          "MyObjectBuilder_ResourceDistributionGroup/AIBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Battery",
+          "MyObjectBuilder_ResourceDistributionGroup/BatteryBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Charging",
+          "MyObjectBuilder_ResourceDistributionGroup/Conveyors",
+          "MyObjectBuilder_ResourceDistributionGroup/Defense",
+          "MyObjectBuilder_ResourceDistributionGroup/DefenseAdative",
+          "MyObjectBuilder_ResourceDistributionGroup/Doors",
+          "MyObjectBuilder_ResourceDistributionGroup/Factory",
+          "MyObjectBuilder_ResourceDistributionGroup/Generators",
+          "MyObjectBuilder_ResourceDistributionGroup/Gyro",
+          "MyObjectBuilder_ResourceDistributionGroup/LifeSupport",
+          "MyObjectBuilder_ResourceDistributionGroup/Reactors",
+          "MyObjectBuilder_ResourceDistributionGroup/SafeZoneBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/SolarPanels",
+          "MyObjectBuilder_ResourceDistributionGroup/Thrust",
+          "MyObjectBuilder_ResourceDistributionGroup/Utility"
+        ],
+        "FrozenFrame": 35570,
+        "SimulatedThrough": 35570,
+        "ClockFrameSeconds": 0.016666666666666666,
+        "SunFrame": 35570,
+        "SunPeriodFrames": 0,
+        "ResourceFrameRemaining": 1,
+        "Creative": false,
+        "Simplified": false,
+        "Confidence": "Exact",
+        "Unknowns": [],
+        "Inventories": [
+          {
+            "Block": 110642309498187096,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 10
+              }
+            ]
+          }
+        ],
+        "Items": {
+          "MyObjectBuilder_Ingot/Uranium": {
+            "Volume": 5.2e-05,
+            "Mass": 1,
+            "Integral": false
+          }
+        },
+        "Sinks": [
+          {
+            "Block": 90954741373575752,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 92162334636775284,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 93800654626292442,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 102324553000019598,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 0.20000000298023224
+          },
+          {
+            "Block": 142166206717654522,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 131067209858426176,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Conveyors",
+            "Priority": 20,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 1.0000000116860974e-07
+          },
+          {
+            "Block": 131067209858426176,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Gyro",
+            "Priority": 70,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 0
+          }
+        ],
+        "Sources": [
+          {
+            "Block": 110642309498187096,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Reactors",
+            "Kind": "Reactor",
+            "Priority": 3,
+            "Maximum": 15,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": -1,
+            "StorageCost": 0,
+            "Fuel": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 4.62962987108363e-06,
+                "Inventories": [
+                  0
+                ]
+              }
+            ],
+            "FuelTickFrames": 1800,
+            "FuelElapsedFrames": 800,
+            "FuelTier2TickFrames": 3600,
+            "FuelTier2AfterFrames": 35100,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 132781035459842199,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 12,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 0,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 142802305128945548,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 12,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 1,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          }
+        ],
+        "Storage": [
+          {
+            "Block": 132781035459842199,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 1.4996248483657837,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 91,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 142802305128945548,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 1.4996243715286255,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 90,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Production": [],
+        "Upkeep": [],
+        "Observations": []
+      },
+      "actual": {
+        "Storage": [
+          {
+            "Block": 132781035459842199,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 0.873597264289856,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 91,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 142802305128945548,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 0.8735967874526978,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 90,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Inventories": [
+          {
+            "Block": 110642309498187096,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 10
+              }
+            ]
+          }
+        ]
+      },
+      "legacyExpectedFuel": 10
+    },
+    {
+      "name": "solar-priority",
+      "frames": 1350000,
+      "initial": {
+        "ClockDomain": null,
+        "ClockEpoch": null,
+        "ClockGeneration": 0,
+        "SunClockTicks": null,
+        "Schema": 2,
+        "Group": 73986513337494964,
+        "Members": [
+          73986513337494964
+        ],
+        "ContentHash": "F7FDE38CEDD1E0D454052B08EB3AAC464236445B7A7E4E4271B383EDFD9CE43E",
+        "Definitions": [
+          "MyObjectBuilder_BatteryBlock/LargeBlockBatteryBlock",
+          "MyObjectBuilder_Ingot/Uranium",
+          "MyObjectBuilder_InteriorLight/LargeBlockLight_1corner",
+          "MyObjectBuilder_RadioAntenna/LargeBlockRadioAntenna",
+          "MyObjectBuilder_Reactor/LargeBlockSmallGenerator",
+          "MyObjectBuilder_ResourceDistributionGroup/AIBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Battery",
+          "MyObjectBuilder_ResourceDistributionGroup/BatteryBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/Charging",
+          "MyObjectBuilder_ResourceDistributionGroup/Conveyors",
+          "MyObjectBuilder_ResourceDistributionGroup/Defense",
+          "MyObjectBuilder_ResourceDistributionGroup/DefenseAdative",
+          "MyObjectBuilder_ResourceDistributionGroup/Doors",
+          "MyObjectBuilder_ResourceDistributionGroup/Factory",
+          "MyObjectBuilder_ResourceDistributionGroup/Generators",
+          "MyObjectBuilder_ResourceDistributionGroup/Gyro",
+          "MyObjectBuilder_ResourceDistributionGroup/LifeSupport",
+          "MyObjectBuilder_ResourceDistributionGroup/Reactors",
+          "MyObjectBuilder_ResourceDistributionGroup/SafeZoneBlock",
+          "MyObjectBuilder_ResourceDistributionGroup/SolarPanels",
+          "MyObjectBuilder_ResourceDistributionGroup/Thrust",
+          "MyObjectBuilder_ResourceDistributionGroup/Utility",
+          "MyObjectBuilder_SolarPanel/LargeBlockSolarPanel"
+        ],
+        "FrozenFrame": 35570,
+        "SimulatedThrough": 35570,
+        "ClockFrameSeconds": 0.016666666666666666,
+        "SunFrame": 35570,
+        "SunPeriodFrames": 0,
+        "ResourceFrameRemaining": 1,
+        "Creative": false,
+        "Simplified": false,
+        "Confidence": "Exact",
+        "Unknowns": [],
+        "Inventories": [
+          {
+            "Block": 95892761730776462,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 10
+              }
+            ]
+          }
+        ],
+        "Items": {
+          "MyObjectBuilder_Ingot/Uranium": {
+            "Volume": 5.2e-05,
+            "Mass": 1,
+            "Integral": false
+          }
+        },
+        "Sinks": [
+          {
+            "Block": 83464415590214097,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 0.20000000298023224
+          },
+          {
+            "Block": 93301831628529612,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 102999672008607355,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 121540800887094979,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 126860039869691828,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Utility",
+            "Priority": 50,
+            "Adaptible": false,
+            "Powered": true,
+            "Required": 7.999999797903001e-05
+          },
+          {
+            "Block": 73986513337494964,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Conveyors",
+            "Priority": 20,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 1.0000000116860974e-07
+          },
+          {
+            "Block": 73986513337494964,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Gyro",
+            "Priority": 70,
+            "Adaptible": false,
+            "Powered": false,
+            "Required": 0
+          }
+        ],
+        "Sources": [
+          {
+            "Block": 84237137936092398,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 12,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 0,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 95892761730776462,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Reactors",
+            "Kind": "Reactor",
+            "Priority": 3,
+            "Maximum": 15,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": -1,
+            "StorageCost": 0,
+            "Fuel": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 4.62962987108363e-06,
+                "Inventories": [
+                  0
+                ]
+              }
+            ],
+            "FuelTickFrames": 1800,
+            "FuelElapsedFrames": 800,
+            "FuelTier2TickFrames": 3600,
+            "FuelTier2AfterFrames": 35100,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 134748034810154554,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "Battery",
+            "Kind": "Battery",
+            "Priority": 2,
+            "Maximum": 12,
+            "Curve": null,
+            "ShadowAllowance": null,
+            "Storage": 1,
+            "StorageCost": 4.6296296296296296e-06,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          },
+          {
+            "Block": 139313267736891854,
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": "SolarPanels",
+            "Kind": "Environmental",
+            "Priority": 1,
+            "Maximum": 0.1599999964237213,
+            "Curve": [
+              1
+            ],
+            "ShadowAllowance": [
+              0
+            ],
+            "Storage": -1,
+            "StorageCost": 0,
+            "Fuel": [],
+            "FuelTickFrames": 0,
+            "FuelElapsedFrames": 0,
+            "FuelTier2TickFrames": 0,
+            "FuelTier2AfterFrames": -1,
+            "PowerSink": -1,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "PowerFeedback": false,
+            "Producing": false
+          }
+        ],
+        "Storage": [
+          {
+            "Block": 84237137936092398,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 1.4996238946914673,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 89,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 134748034810154554,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 1.499623417854309,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 88,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Production": [],
+        "Upkeep": [],
+        "Observations": []
+      },
+      "actual": {
+        "Storage": [
+          {
+            "Block": 84237137936092398,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 0.8735963106155396,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 89,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          },
+          {
+            "Block": 134748034810154554,
+            "Kind": "Battery",
+            "Resource": "MyObjectBuilder_GasProperties/Electricity",
+            "Group": null,
+            "Amount": 0.8735958337783813,
+            "Capacity": 3,
+            "MaxInput": 12,
+            "InputConversion": 4.6296296296296296e-06,
+            "LeakPerFrame": 0,
+            "Priority": 0,
+            "Mode": 2,
+            "PowerSink": -1,
+            "Pair": true,
+            "Enabled": true,
+            "Full": false,
+            "Creative": false,
+            "RechargeEfficiency": 0.800000011920929,
+            "IdlePower": -1,
+            "OperationalPower": 0,
+            "Transferring": false,
+            "TickFrames": 0,
+            "ElapsedFrames": 88,
+            "AccountedEnergy": 0,
+            "Sampling": false
+          }
+        ],
+        "Inventories": [
+          {
+            "Block": 95892761730776462,
+            "Index": 0,
+            "InventoryId": "Inventory",
+            "MaxVolume": 1,
+            "MaxMass": 9223372036854.78,
+            "Stacks": [
+              {
+                "Item": "MyObjectBuilder_Ingot/Uranium",
+                "Amount": 10
+              }
+            ]
+          }
+        ]
+      },
+      "legacyExpectedFuel": 10
+    }
+  ]
+}

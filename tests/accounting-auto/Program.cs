@@ -45,4 +45,22 @@ foreach (var store in capped.Storage) store.TickFrames = 100;
 var cap = OfflineModel.Simulate(capped, 100000000, 72 * 225000);
 Check(cap.Capped && cap.Events < 2000000 && capped.Storage.All(s => s.Amount >= 0 && s.Amount <= s.Capacity), "active Auto native phases respect72hour cap, stocks and event budget");
 Check(OfflineModel.Simulate(capped, 100000000, 72 * 225000).Frames == 0, "actual wake forfeiture prevents another capped grant");
+// R17-1: active phases, unlike the idle control, previously required >3.2M events.
+var phased = data.RootElement.GetProperty("rows")[0].GetProperty("initial").Deserialize<OfflineProfile>(OfflineProfile.Json)!;
+T Copy<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, OfflineProfile.Json), OfflineProfile.Json)!;
+var battery = Copy(phased.Storage[0]); var port = Copy(phased.Sources.First(s => s.Storage == 0));
+var external = phased.Sources.Where(s => s.Storage < 0).ToList();
+phased.Storage.Clear(); phased.Sources.Clear();
+for (int i = 0; i < 20; i++)
+{
+    var store = Copy(battery); store.Block = 1000 + i; store.Amount = store.Capacity; store.Full = true;
+    store.TickFrames = 100; store.ElapsedFrames = i * 5; store.Sampling = false; store.AccountedEnergy = 0;
+    phased.Storage.Add(store);
+    var source = Copy(port); source.Block = store.Block; source.Storage = i; phased.Sources.Add(source);
+}
+phased.Sources.AddRange(external);
+foreach (var stack in phased.Inventories.SelectMany(i => i.Stacks).Where(s => s.Item == "MyObjectBuilder_Ingot/Uranium")) stack.Amount = 1000;
+var phasedResult = OfflineModel.Simulate(phased, phased.SimulatedThrough + 72 * 225000, 72 * 225000);
+Check(phasedResult.Frames == 72 * 225000 && phasedResult.Events < 2000000, "20 active staggered native phases complete the full72hours under unchanged guard");
+Console.WriteLine($"20 active phases: {phasedResult.Events} events");
 Console.WriteLine($"PASS {checks} native-reference/legacy/cap assertions");

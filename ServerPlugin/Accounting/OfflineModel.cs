@@ -9,7 +9,7 @@ namespace Concealment.Accounting;
 
 /// <summary>Piecewise constant, stock-limited resource and production model. Only detached profiles
 /// are mutated. Applying the result is a separate validated, transactional object-builder operation.</summary>
-internal static class OfflineModel
+internal static partial class OfflineModel
 {
 	private const double Epsilon = 1e-8;
 	internal const string Electricity = "MyObjectBuilder_GasProperties/Electricity";
@@ -55,6 +55,7 @@ internal static class OfflineModel
 		var poweredSources = profile.Sources.Select((source, index) => (Source: source, Index: index))
 			.Where(s => s.Source.PowerSink >= 0 && s.Source.IdlePower >= 0).GroupBy(s => s.Source.PowerSink).ToArray();
 		bool singleFeedbackStep = false;
+		var cycles = new StorageCycles(profile);
 		while (true)
 		{
 			if (++result.Events > 2_000_000) throw new InvalidDataException("Offline event budget exceeded; no partial result may be applied");
@@ -124,7 +125,7 @@ internal static class OfflineModel
 			// Working state and chip renewal use the SAME allocated electricity as production.
 			// Losing power removes the bubble and pauses its paid credit; recovery recreates it
 			// with vanilla's activation delay. Neither transition switches the functional block off.
-			if (UpdateZones(profile, required, input, result)) continue;
+			if (UpdateZones(profile, required, input, result)) { cycles.Reset(); continue; }
 			if (elapsed + Epsilon >= duration) break;
 			// Only a fast closed feedback cycle aliases the native storage sampler. Keep
 			// steady flow on the existing integral; finish any timer interval a cycle entered.
@@ -163,8 +164,6 @@ internal static class OfflineModel
 				if (store.Sampling || store.Creative) storageRate[i] = 0;
 			}
 			double step = duration - elapsed;
-			foreach (var store in profile.Storage.Where(s => s.Sampling && s.Enabled))
-				step = Math.Min(step, Math.Max(1, store.TickFrames - store.ElapsedFrames));
 			for (int i = 0; i < profile.Sources.Count; i++)
 			{
 				var source = profile.Sources[i];
@@ -174,12 +173,20 @@ internal static class OfflineModel
 			}
 			if (profile.SunPeriodFrames > 0 && profile.Sources.Any(s => s.Curve is { Length: > 1 }))
 			{
-				int count = profile.Sources.Where(s => s.Curve is { Length: > 1 }).Max(s => s.Curve.Length);
-				double width = profile.SunPeriodFrames / count;
-				double position = SunPosition(angleFrame, profile.SunPeriodFrames, count);
-				step = Math.Min(step, profile.SunPath == null ? (Math.Floor(position) + 1 - position) * width * engineFramesPerClockFrame
-					: profile.Sources.Where(s => s.Curve is { Length: > 1 }).Min(s => profile.SunPath.UntilBinChange(profile, address, s.Curve.Length)));
+				step = Math.Min(step, profile.Sources.Where(s => s.Curve is { Length: > 1 }).Min(source =>
+				{
+					if (profile.SunPath != null) return profile.SunPath.UntilBinChange(profile, address, source.Curve.Length);
+					double position = SunPosition(angleFrame, profile.SunPeriodFrames, source.Curve.Length);
+					return (Math.Floor(position) + 1 - position) * (profile.SunPeriodFrames / source.Curve.Length) * engineFramesPerClockFrame;
+				}));
 			}
+			foreach (var zone in profile.Upkeep.Where(z => z.Enabled && z.Exists))
+				step = Math.Min(step, Math.Max(Epsilon, zone.ActivationRemainingFrames > Epsilon ? zone.ActivationRemainingFrames : zone.RemainingFrames));
+			// A repeated storage cycle is valid only inside this fuel/tier/sun/zone/end
+			// interval. Every boundary itself still runs through ordinary settlement.
+			double cycleBoundary = elapsed + step;
+			foreach (var store in profile.Storage.Where(s => s.Sampling && s.Enabled))
+				step = Math.Min(step, Math.Max(1, store.TickFrames - store.ElapsedFrames));
 			for (int i = 0; i < choice.Length; i++)
 			{
 				var production = profile.Production[i];
@@ -238,8 +245,6 @@ internal static class OfflineModel
 				if (store.Kind == "Battery" && store.Mode != 2 && (store.Full && storageRate[i] < -Epsilon
 					|| !store.Full && store.Capacity - store.Amount < store.MaxInput / 2160)) step = Math.Min(step, 100);
 			}
-			foreach (var zone in profile.Upkeep.Where(z => z.Enabled && z.Exists))
-				step = Math.Min(step, Math.Max(Epsilon, zone.ActivationRemainingFrames > Epsilon ? zone.ActivationRemainingFrames : zone.RemainingFrames));
 			if (feedback != null)
 			{
 				if (feedback.Period > 1 && step + Epsilon < feedback.Period)
@@ -289,6 +294,7 @@ internal static class OfflineModel
 				if (maximum[i] <= 0) continue; // Native timer pauses without working fuel.
 				source.FuelElapsedFrames += step;
 				if (source.FuelElapsedFrames + Epsilon < source.FuelTickFrames) continue;
+				cycles.Reset(); // even a zero-output settlement resets the native timer
 				// MyReactor consumes the last distributed output times the whole timer,
 				// not the integral of all outputs since its previous settlement.
 				double settlementOutput = feedback?.SettlementOutput[i] ?? output[i];
@@ -368,6 +374,8 @@ internal static class OfflineModel
 			}
 			singleFeedbackStep = false;
 			elapsed += step;
+			if (step != Math.Truncate(step) || elapsed + Epsilon >= cycleBoundary) cycles.Reset();
+			else elapsed += cycles.Advance(profile, result, elapsed, cycleBoundary);
 		}
 		profile.SimulatedThrough = wakeFrame; // the cap is deliberately forfeited, never banked for a second wake
 		result.EnergyDelta = profile.Storage.Where(s => s.Kind is "Battery" or "Jump").Sum(s => s.Amount) - energy;

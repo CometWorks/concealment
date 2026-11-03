@@ -308,6 +308,7 @@ python3 tests/accounting-recovery/run.py /absolute/path/to/new/probe-output
 python3 tests/accounting-mechanical/run.py /absolute/path/to/new/mechanical-output
 python3 tests/accounting-physics/run.py /absolute/path/to/new/physics-output
 python3 tests/accounting-prediction/run.py /absolute/path/to/new/prediction-output
+python3 tests/accounting-cycles/run.py /absolute/path/to/new/cycle-output
 ```
 
 The clock/JSON-boundary check consumes the built production DLL and native DS references. The recovery check extracts
@@ -319,6 +320,9 @@ The prediction check uses the exact preparation methods and detached model with 
 session/history transport, covering current-period quality, resource predictions and
 unavailable-history refusal. Predictions share the wake preparation, including its
 Approximate fallback when the saved solar rotation period differs from the current one.
+The cycle check compares exact model sources with cycle skipping disabled, including
+staggered battery phases and fuel, tier, solar and zone boundaries. It is a synthetic
+model check; the retained native Auto oracle remains in `tests/accounting-auto`.
 
 `tests/` holds an in-game test suite. It starts a Magnetar server with this working copy
 of the plugin, joins it with two headless game clients and drives them through the

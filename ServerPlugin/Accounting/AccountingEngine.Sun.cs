@@ -25,6 +25,19 @@ internal static partial class AccountingEngine
 		+ matrix.Right * pivot.X + matrix.Up * pivot.Y + matrix.Forward * pivot.Z;
 	private static bool IsEnvironmental(MyCubeBlock block) => block is MySolarPanel or MyOxygenFarm;
 
+	// Stay inside the engine's joined physics-read phase. Its Parallel.For may
+	// execute a callback on the simulation thread; plain Wait never executes the
+	// child there. Normal engine workers already have their Havok thread context.
+	internal static bool SolarWorkerStep(int simulationThread, Func<bool> sample)
+	{
+		if (Thread.CurrentThread.ManagedThreadId != simulationThread) return sample();
+		bool stop = true;
+		var work = ParallelTasks.Parallel.Start(() => { stop = sample(); });
+		work.Wait();
+		if (work.Exceptions is { Length: > 0 } errors) throw new AggregateException(errors);
+		return stop;
+	}
+
 	/// <summary>Snapshot geometry on the game thread, ray-test through the engine physics queue.
 	/// Its workers hold the Havok read state and initialized native thread context. Neither the world's sun nor a live block's measured output is changed.</summary>
 	private static Task<OfflineSunCurve> SampleSun(MyCubeBlock block, CancellationToken cancellation)
@@ -72,9 +85,10 @@ internal static partial class AccountingEngine
 		if (!functional) return Task.FromResult(curve);
 		var completion = new TaskCompletionSource<OfflineSunCurve>(TaskCreationOptions.RunContinuationsAsynchronously);
 		var hits = new List<MyPhysics.HitInfo>();
+		int simulationThread = Thread.CurrentThread.ManagedThreadId;
 		// One sun direction per panel per physics pass bounds this work without issuing
 		// synchronous Havok calls from an arbitrary .NET thread-pool thread.
-		MyPhysics.CastChainedRaycastsParallel(steps, step =>
+		bool Sample(int step)
 		{
 			try
 			{
@@ -115,6 +129,11 @@ internal static partial class AccountingEngine
 				if (curve.Extra != null) curve.Extra[step] = OfflineSunCurve.ShadowExtra(curve.Raw[step], lit, pivots.Length); // weather expectation = 1
 				return false;
 			}
+			catch (Exception error) { completion.TrySetException(error); return true; }
+		}
+		MyPhysics.CastChainedRaycastsParallel(steps, step =>
+		{
+			try { return SolarWorkerStep(simulationThread, () => Sample(step)); }
 			catch (Exception error) { completion.TrySetException(error); return true; }
 		}, _ =>
 		{

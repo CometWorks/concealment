@@ -121,6 +121,14 @@ fuel remain in the same paid resource budget. Older finite profiles remain reada
 An older unpaid NPC profile without the correct mode is refused with its original
 claim/stocks retained; it is not silently reinterpreted or charged as Survival.
 
+New battery captures retain the native 100-update phase. Near-full Auto batteries
+settle with native float rounding, so alternating recharge/discharge also pays the
+reactor's sampled fuel cost. Older continuous profiles retain their original math.
+Solar sampling stays inside the engine's joined physics-read phase; callbacks on
+the simulation thread hand computation to initialized native workers and join it.
+The main thread can still wait for that work. Native requalification and the
+exclusive sampling-time/frame budget remain required for these repairs.
+
 `ConcealmentBanks.jsonl` is immutable migration provenance. Existing positive banks
 drain using the original configured native production/power multiplier. They create
 no new grants and exclude the entire physical/logical accounting group from new

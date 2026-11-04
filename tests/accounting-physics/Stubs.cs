@@ -1,0 +1,33 @@
+using Shared.Concealment;
+using Havok;
+static class Native { internal static readonly List<MechanicalPhysics> Owners=new(); }
+namespace Havok {
+ class HkConstraint {
+  bool m_enabled=true,m_forceDisabled;
+  public object RigidBodyA,RigidBodyB;
+  public bool IsDisposed,InWorld=true;
+  public override int GetHashCode()=>IsDisposed?0:base.GetHashCode();
+  public override bool Equals(object value)=>ReferenceEquals(this,value)||(IsDisposed&&value is HkConstraint c&&c.IsDisposed);
+  public bool Enabled { get=>m_enabled&&!m_forceDisabled; set { bool v=value; foreach(var o in Native.Owners)o.Setting(this,v,false,ref v);if(Native.Owners.All(o=>o.CanSet(this)))m_enabled=v; } }
+  public bool ForceDisabled {get=>m_forceDisabled;set {bool v=value;foreach(var o in Native.Owners)o.Setting(this,v,true,ref v);if(Native.Owners.All(o=>o.CanSet(this)))m_forceDisabled=v;} }
+ }
+}
+namespace Sandbox.Common.ObjectBuilders { class MyObjectBuilder_MechanicalConnectionBlock { public long? TopBlockId; } }
+namespace Sandbox.Game.Entities {
+ class MyCubeGrid {public long EntityId;public List<Blocks.MyMechanicalConnectionBlockBase> Blocks=new();public Physics Physics=new();public IEnumerable<Blocks.MyMechanicalConnectionBlockBase> GetFatBlocks()=>Blocks;}
+ class Physics {public Body RigidBody=new(),RigidBody2;}
+ class Body {public void Deactivate(){} }
+ class MyEntities {internal static Dictionary<long,object> Entities=new();public static object GetEntityById(long id)=>Entities.GetValueOrDefault(id);}
+}
+namespace Sandbox.Game.Entities.Blocks {
+ class Connection {public ConnectionState Value;} class ConnectionState {public long? TopBlockId;}
+ class MyMechanicalConnectionBlockBase {
+  public Connection m_connectionState=>new(){Value=new(){TopBlockId=Target}};
+  public long EntityId;public bool MarkedForClose;public MyCubeGrid CubeGrid;public MyAttachableTopBlockBase TopBlock;public long? Target;
+  HkConstraint constraint;
+  public HkConstraint Constraint {get=>constraint;set {foreach(var o in Native.Owners.Where(o=>o.Contains(this)))o.Assign(this,value);constraint=value;} }
+  public Sandbox.Common.ObjectBuilders.MyObjectBuilder_MechanicalConnectionBlock GetObjectBuilderCubeBlock()=>new(){TopBlockId=Target};
+ }
+ class MyPistonBase:MyMechanicalConnectionBlockBase { public HkConstraint m_subpartsConstraint; public MyCubeGrid Part=new(); public Physics m_subpartPhysics=>Part.Physics; }
+ class MyAttachableTopBlockBase {public MyMechanicalConnectionBlockBase Stator;}
+}

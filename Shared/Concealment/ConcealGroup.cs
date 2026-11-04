@@ -27,17 +27,26 @@ public sealed class ConcealGroup
     internal const EntityFlags ConcealedFlag = (EntityFlags)4;
 
     private readonly HashSet<long> projectors = new HashSet<long>();
+#if MAGNETAR
+    internal MechanicalPhysics Physics { get; set; }
+    internal bool HoldsMechanicalPhysics => Physics?.HasBlocks == true;
+    internal bool MechanicalPhysicsIntact => Physics?.Intact ?? true;
+
+    internal void HoldMechanicalPhysics() => Physics ??= new MechanicalPhysics(Grids);
+#endif
 
     public long Id { get; }
     public bool IsConcealed { get; private set; }
     public BoundingBoxD WorldAabb { get; private set; }
+#if !MAGNETAR
+    public HashSet<long> ProductionCatchupGridIds { get; } = new HashSet<long>();
+    internal long ConcealedAtTick;
+#endif
     public List<MyCubeGrid> Grids { get; }
     public List<MyMedicalRoom> MedicalRooms { get; } = new List<MyMedicalRoom>();
     public List<MyCryoChamber> CryoChambers { get; } = new List<MyCryoChamber>();
-    public HashSet<long> ProductionCatchupGridIds { get; } = new HashSet<long>();
     public event Action<ConcealGroup> Closing;
     internal int ProxyId = -1;
-    internal long ConcealedAtTick;
 
     public ConcealGroup(MyGroups<MyCubeGrid, MyGridPhysicalGroupData>.Group group)
     {
@@ -98,16 +107,20 @@ public sealed class ConcealGroup
 
     public void Conceal(Action<MyEntity> removeUpdatingComponents)
     {
+        if (ConcealmentRuntime.ClusterMode) return;
         foreach (var grid in Grids)
         {
             DisableProjectors(grid);
 
             if (grid.Parent == null)
-                UnregisterRecursive(grid);
+                SuppressUpdates(grid, removeUpdatingComponents);
         }
 
-        void UnregisterRecursive(MyEntity entity)
+    }
+
+    internal static void SuppressUpdates(MyEntity entity, Action<MyEntity> removeUpdatingComponents)
         {
+            if (ConcealmentRuntime.ClusterMode) return;
             if (entity.IsPreview)
                 return;
 
@@ -126,12 +139,16 @@ public sealed class ConcealGroup
                 return;
 
             foreach (var child in entity.Hierarchy.Children)
-                UnregisterRecursive((MyEntity)child.Container.Entity);
+                SuppressUpdates((MyEntity)child.Container.Entity, removeUpdatingComponents);
         }
-    }
 
     public void Reveal(MyEntityComponentUpdater componentUpdater)
     {
+        if (ConcealmentRuntime.ClusterMode) return;
+#if MAGNETAR
+        Physics?.Release();
+        Physics = null;
+#endif
         foreach (var grid in Grids)
             if (grid.Parent == null)
                 RegisterRecursive(grid);
@@ -160,12 +177,24 @@ public sealed class ConcealGroup
     // asks for updates again whenever its NeedsUpdate changes, for example when
     // a script or a network event starts a timer.
     internal static bool PrefixRegisterForUpdate(MyEntity entity) =>
-        entity == null || (entity.Flags & ConcealedFlag) == 0;
+        ConcealmentRuntime.ClusterMode || entity == null || (entity.Flags & ConcealedFlag) == 0;
+
+    internal static bool PrefixGameLogic(VRage.Game.Components.MyGameLogicComponent __0) =>
+        ConcealmentRuntime.ClusterMode || __0?.Entity is not MyEntity entity || (entity.Flags & ConcealedFlag) == 0;
+
+    internal IEnumerable<long> Projectors => projectors;
+    internal void RestoreProjectors(IEnumerable<long> ids)
+    {
+        foreach (long id in ids)
+            if (MyEntities.GetEntityById(id) is MyProjectorBase projector)
+            { projector.Enabled = false; projectors.Add(id); }
+    }
 
     public bool SwitchedOffProjector(long entityId) => projectors.Contains(entityId);
 
     public void EnableProjectors()
     {
+        if (ConcealmentRuntime.ClusterMode) return;
         foreach (
             var projector in projectors.Select(x => MyEntities.GetEntityById(x) as MyProjectorBase)
         )
@@ -178,16 +207,16 @@ public sealed class ConcealGroup
     private void HookOnClosing()
     {
         foreach (var grid in Grids)
-            grid.OnMarkForClose += GridOnMarkForClose;
+            ((IMyEntity)grid).OnMarkForClose += GridOnMarkForClose;
     }
 
     private void UnhookOnClosing()
     {
         foreach (var grid in Grids)
-            grid.OnMarkForClose -= GridOnMarkForClose;
+            ((IMyEntity)grid).OnMarkForClose -= GridOnMarkForClose;
     }
 
-    private void GridOnMarkForClose(MyEntity entity)
+    private void GridOnMarkForClose(IMyEntity entity)
     {
         EnableProjectors();
         UnhookOnClosing();

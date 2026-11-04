@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using PluginSdk;
 using PluginSdk.Commands;
 using PluginSdk.Config;
@@ -211,7 +212,7 @@ public sealed class ProbeCommands : CommandModule
     private static IDictionary BoostBanks =>
         (IDictionary)
             Concealment
-                .GetType("Shared.Concealment.ProductionBoostManager")
+                .GetType("Shared.Concealment.LegacyBoostMigration")
                 .GetField("BoostBankFrames", Any)
                 .GetValue(null);
 
@@ -234,6 +235,17 @@ public sealed class ProbeCommands : CommandModule
     {
         BoostBanks.Clear();
         return "Probe clearbanks: done";
+    }
+
+    [Command("accounting", "Standalone native-stock claims and application receipts.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Accounting()
+    {
+        var manager = Plugin.GetType().GetProperty("Manager").GetValue(Plugin);
+        var adapter = manager?.GetType().GetProperty("Accounting", Any)?.GetValue(manager);
+        var records = adapter?.GetType().GetField("records", Any)?.GetValue(adapter) as IDictionary;
+        return "Probe accounting: " + JsonSerializer.Serialize(records?.Values.Cast<object>().Distinct().ToArray() ?? [],
+            new JsonSerializerOptions { IncludeFields = true });
     }
 
     [Command("velocity", "Sets a grid's linear velocity in m/s.")]

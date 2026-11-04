@@ -6,7 +6,7 @@
 namespace System.Runtime.CompilerServices;
 
 /* Uncomment to enable publicizer support
- 
+
 // This code is required in production builds when publicizer support is enabled.
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
 public sealed class IgnoresAccessChecksToAttribute : Attribute

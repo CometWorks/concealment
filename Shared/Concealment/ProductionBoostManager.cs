@@ -1,3 +1,4 @@
+#if !MAGNETAR
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -570,3 +571,5 @@ public sealed class ProductionBoostManager : IDisposable
         public double Multiplier;
     }
 }
+
+#endif

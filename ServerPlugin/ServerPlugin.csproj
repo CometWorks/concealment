@@ -8,10 +8,8 @@
     <Copyright>Copyright (c) 2026 CometWorks</Copyright>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
 
-    <!-- Target platforms on Windows and Linux -->
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows'))"
-      >net48;net10.0</TargetFrameworks>
-    <TargetFramework Condition="!$([MSBuild]::IsOSPlatform('Windows'))">net10.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
+    <PathMap>$(RepoRoot)=/_/concealment</PathMap>
 
     <!-- Ensure SDK generates assembly attributes (no need for AssemblyInfo) -->
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
@@ -312,20 +310,20 @@
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest"
           Pack="true" PackagePath="" />
+    <None Include="$(RepoRoot)ServerPlugin/Accounting/LICENSE;$(RepoRoot)ServerPlugin/Accounting/NOTICE"
+          Link="accounting/%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Lib.Harmony" Version="2.4.2" />
     <PackageReference Include="Mono.Cecil" Version="0.11.6" />
-    <!-- Uncomment to enable publicizer support
     <PackageReference Include="Krafs.Publicizer" Version="2.3.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    -->
   </ItemGroup>
 
-  <!-- Uncomment to enable publicizer support
   <PropertyGroup>
     <PublicizerClearCacheOnClean>true</PublicizerClearCacheOnClean>
     <PublicizerRuntimeStrategies>Unsafe;IgnoresAccessChecksTo</PublicizerRuntimeStrategies>
@@ -334,12 +332,21 @@
 
   <ItemGroup>
     <Publicize Include="Sandbox.Game"/>
+    <Publicize Include="Sandbox.Common"/>
     <Publicize Include="SpaceEngineers.Game"/>
+    <Publicize Include="SpaceEngineers.ObjectBuilders"/>
+    <Publicize Include="VRage"/>
+    <Publicize Include="VRage.Game"/>
+    <Publicize Include="VRage.Library"/>
+    <Publicize Include="VRage.Math"/>
+    <Publicize Include="VRage.Scripting"/>
+    <Publicize Include="VRage.Dedicated"/>
     <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyEntities.OnEntityAdd"/>
     <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyEntities.OnEntityRemove"/>
     <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyCubeGrid.OnStaticChanged"/>
+    <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyCubeGrid.OnGridMerge"/>
+    <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyCubeGrid.OnGridSplit"/>
   </ItemGroup>
-  -->
 
   <Target Name="ValidateProps" BeforeTargets="PrepareForBuild">
     <Error
@@ -394,6 +401,9 @@
       SourceFiles="$(TargetDir)LICENSE;$(TargetDir)NOTICE"
       DestinationFolder="$(PluginDirectory)$(PathSeparator)$(TargetName).licenses"
     />
+    <Copy Condition="'$(PluginDirectory)' != ''"
+          SourceFiles="$(TargetDir)accounting/LICENSE;$(TargetDir)accounting/NOTICE"
+          DestinationFolder="$(PluginDirectory)$(PathSeparator)$(TargetName).licenses/accounting" />
     <Copy
       Condition="'$(PluginDirectory)' != '' And Exists('$(TargetDir)$(TargetName).pdb')"
       SourceFiles="$(TargetDir)$(TargetName).pdb"

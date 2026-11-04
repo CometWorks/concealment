@@ -19,7 +19,7 @@ public sealed class ConcealmentCommands : CommandModule
     [Permission(MyPromoteLevel.SpaceMaster)]
     public CommandReply Conceal(double distance = 0)
     {
-        if (Plugin?.Manager == null)
+        if (!Shared.Concealment.ConcealmentRuntime.StandaloneActive)
             return CommandReply.Error("Concealment is not loaded.");
 
         if (distance < 0)
@@ -36,7 +36,7 @@ public sealed class ConcealmentCommands : CommandModule
     [Permission(MyPromoteLevel.SpaceMaster)]
     public CommandReply Reveal(double distance = 1000)
     {
-        if (Plugin?.Manager == null)
+        if (!Shared.Concealment.ConcealmentRuntime.StandaloneActive)
             return CommandReply.Error("Concealment is not loaded.");
 
         if (distance < 0)
@@ -54,7 +54,7 @@ public sealed class ConcealmentCommands : CommandModule
     [Permission(MyPromoteLevel.SpaceMaster)]
     public string RevealAll()
     {
-        if (Plugin?.Manager == null)
+        if (!Shared.Concealment.ConcealmentRuntime.StandaloneActive)
             return "Concealment is not loaded.";
 
         var count = Plugin.Manager.RevealAll();
@@ -65,7 +65,7 @@ public sealed class ConcealmentCommands : CommandModule
     [Permission(MyPromoteLevel.SpaceMaster)]
     public string Enable()
     {
-        if (Plugin?.Manager == null)
+        if (!Shared.Concealment.ConcealmentRuntime.StandaloneActive)
             return "Concealment is not loaded.";
 
         Plugin.ConfigData.Enabled = true;
@@ -77,7 +77,7 @@ public sealed class ConcealmentCommands : CommandModule
     [Permission(MyPromoteLevel.SpaceMaster)]
     public string Disable()
     {
-        if (Plugin?.Manager == null)
+        if (!Shared.Concealment.ConcealmentRuntime.StandaloneActive)
             return "Concealment is not loaded.";
 
         Plugin.ConfigData.Enabled = false;

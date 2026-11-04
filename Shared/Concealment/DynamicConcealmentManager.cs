@@ -36,6 +36,10 @@ public sealed class DynamicConcealmentManager : IDisposable
         nameof(MyEntity.UpdateAfterSimulation),
         nameof(MyEntity.UpdateAfterSimulation10),
         nameof(MyEntity.UpdateAfterSimulation100),
+        nameof(MyEntity.UpdateOnceBeforeFrame),
+        nameof(MyEntity.Simulate),
+        "UpdateBeforeSimulationParallel",
+        "UpdateAfterSimulationParallel",
     };
 
     private static readonly ReaderWriterLockSlim ConfigLock = new ReaderWriterLockSlim(
@@ -91,6 +95,9 @@ public sealed class DynamicConcealmentManager : IDisposable
 
     public DynamicConcealmentManager(ConcealmentRuntime plugin, Harmony harmony)
     {
+        if (ConcealmentRuntime.ClusterMode)
+            throw new InvalidOperationException("Cluster owns grid lifecycle.");
+
         this.plugin = plugin;
         this.harmony = harmony;
         log = plugin.Log;
@@ -111,7 +118,7 @@ public sealed class DynamicConcealmentManager : IDisposable
         if (disposed)
             return;
 
-        RebuildFromSettings(Config.DynamicConcealment ?? new List<DynamicConcealmentRule>());
+        RebuildFromSettings(Config.ProductionConcealment == ProductionConcealmentMode.Approximate ? new List<DynamicConcealmentRule>() : Config.DynamicConcealment ?? new List<DynamicConcealmentRule>());
 
         foreach (
             var type in GenericConfig
@@ -156,6 +163,14 @@ public sealed class DynamicConcealmentManager : IDisposable
 
         patchedMethods.Clear();
         PluginRef.SetTarget(null);
+    }
+
+    // Distributed native 10/100-frame queues apply removals at their next
+    // rotation. Guard the existing dispatch methods while the whole group is
+    // concealed, including that final queued update; no nearby-entity query runs.
+    internal void GuardConcealedUpdates(IEnumerable<Type> types)
+    {
+        foreach (var type in types.Distinct()) PatchType(type);
     }
 
     private void PatchType(Type type)
@@ -346,6 +361,14 @@ public sealed class DynamicConcealmentManager : IDisposable
 
     private static bool PrefixUpdate(MyEntity __instance)
     {
+        if (!ConcealmentRuntime.StandaloneOwner) return true;
+        if ((__instance.Flags & ConcealGroup.ConcealedFlag) != 0) return false;
+        if (!ConcealmentRuntime.StandaloneActive) return true;
+#if MAGNETAR
+        if (ConcealmentRuntime.Instance.ConfigData.ProductionConcealment == ProductionConcealmentMode.Approximate)
+            return true;
+#endif
+
         if (!(__instance is MyCubeBlock block))
             return true;
 
@@ -477,6 +500,9 @@ public sealed class DynamicConcealmentManager : IDisposable
 
         public void ScheduleRefresh()
         {
+            if (!ConcealmentRuntime.StandaloneActive)
+                return;
+
             if (Interlocked.Exchange(ref scheduled, 1) == 1)
                 return;
 
@@ -487,6 +513,9 @@ public sealed class DynamicConcealmentManager : IDisposable
         {
             try
             {
+                if (!ConcealmentRuntime.StandaloneActive)
+                    return;
+
                 if (!gridRef.TryGetTarget(out var grid) || grid.MarkedForClose)
                     return;
 
@@ -539,6 +568,9 @@ public sealed class DynamicConcealmentManager : IDisposable
 
         public void ScheduleRefresh()
         {
+            if (!ConcealmentRuntime.StandaloneActive)
+                return;
+
             if (Interlocked.Exchange(ref scheduled, 1) == 1)
                 return;
 
@@ -549,6 +581,9 @@ public sealed class DynamicConcealmentManager : IDisposable
         {
             try
             {
+                if (!ConcealmentRuntime.StandaloneActive)
+                    return;
+
                 if (
                     !blockRef.TryGetTarget(out var block)
                     || block.MarkedForClose

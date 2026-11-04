@@ -1,0 +1,1 @@
+This directory contains the offline accounting model/profile/capture and native builder helpers extracted from CometWorks/cluster, reviewed source 7cc64be089828c91fa5db759d6914ab19da0f96e (MIT origin). The MIT notice in LICENSE applies to that inherited code. Concealment wrapper code retains its repository AGPL-3.0-only license.

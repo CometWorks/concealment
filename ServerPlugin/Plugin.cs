@@ -28,6 +28,8 @@ public class Plugin : IPlugin, ICommonPlugin
     public const string Name = "Concealment";
     public static Plugin Instance { get; private set; }
 
+    public static bool ClusterMode => ConcealmentRuntime.ClusterMode;
+
     public long Tick => runtime?.Tick ?? 0;
     private ConcealmentRuntime runtime;
 
@@ -61,6 +63,12 @@ public class Plugin : IPlugin, ICommonPlugin
 
         var gameVersion = MyFinalBuildConstants.APP_VERSION_STRING.ToString();
         Common.SetPlugin(this, gameVersion, MyFileSystem.UserDataPath);
+
+        if (ClusterMode)
+        {
+            Log.Info("Cluster owns grid lifecycle; standalone Concealment is disabled until restart.");
+            return;
+        }
 
         runtime = new ConcealmentRuntime(ConfigData, Log, Name + ".Server", MyFileSystem.UserDataPath);
         RegisterCommands();

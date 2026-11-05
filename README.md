@@ -145,6 +145,9 @@ boost migration, commands and disposal reveal are inactive in that mode, regardl
 of connection/provider health or saved settings. Mode changes require a restart.
 Cluster explicitly invokes accounting contract 3, owns scheduling, authority clocks,
 partition Finals and application, and loads this same plugin implementation.
+A Cluster wake runs its models on a worker thread (`BeginApply`, `WakeReady`, `ApplyWake`):
+a long-offline base can need minutes of model time. Only the clock read, validation,
+admission and the builder commit run on the game thread.
 No Cluster dependency or scheduler is required for standalone use.
 
 Standalone profile schema 2 maps each saved 16 ms world-clock unit to one native resource

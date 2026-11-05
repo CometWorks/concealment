@@ -107,6 +107,33 @@ public static class AccountingApi
         var profiles = sections.SelectMany((section, i) => Read(section).Select(p => (p, covers[i].ToHashSet())));
         AccountingEngine.Apply(entities, profiles);
     }
+    /// <summary>SE-1096: starts a wake's models on a worker thread (see AccountingEngine.Wake). Game thread; null when
+    /// there is nothing to compensate. Poll <see cref="WakeReady"/>, then commit with <see cref="ApplyWake"/>.</summary>
+    public static object BeginApply(byte[][] sections)
+    {
+        RequireHost();
+        var read = sections.Select(Read).ToArray();
+        var wake = AccountingEngine.BeginWake(read.SelectMany(x => x).ToArray(), sections,
+            read.SelectMany((section, i) => section.Select(_ => i)).ToArray());
+        wake?.Start();
+        return wake;
+    }
+    public static bool WakeReady(object wake) => ((AccountingEngine.Wake)wake).Ready;
+    /// <summary><see cref="Apply"/> with the models of a ready <see cref="BeginApply"/> wake of the same sections.</summary>
+    public static void ApplyWake(IDictionary<long, MyObjectBuilder_EntityBase> entities, byte[][] sections, long[][] covers, object wake)
+    {
+        RequireHost();
+        if (sections.Length != covers.Length) throw new InvalidDataException("Profile cover count mismatch");
+        var prepared = (AccountingEngine.Wake)wake;
+        if (!prepared.Ready || !prepared.Matches(sections))
+        {
+            // Another save was read than the wake modeled: wake it here, the slow way.
+            Apply(entities, sections, covers);
+            return;
+        }
+        var members = covers.Select(c => c.ToHashSet()).ToArray();
+        AccountingEngine.Apply(entities, prepared, prepared.Section.Select(i => members[i]).ToArray());
+    }
     internal static OfflineProfile[] Read(byte[] profiles) => profiles == null ? []
         : JsonSerializer.Deserialize<OfflineProfile[]>(profiles, OfflineProfile.Json) ?? throw new InvalidDataException("Missing profiles");
     public static long? FrozenFrame(byte[] profiles) => Read(profiles).FirstOrDefault()?.FrozenFrame;

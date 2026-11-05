@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -45,47 +46,116 @@ internal static partial class AccountingEngine
 		if (!HostSettings.GetBool("offline.compensate")) return;
 		var entries = profiles.ToArray();
 		if (entries.Length == 0) return;
-		var authority = Host.Cluster ? Host.AuthorityClock() : default;
-		long wake = Host.Cluster ? authority.Frame : Frame;
-		// Validate every timebase before any group can commit or thaw. A Skipped
-		// result is not a safe response to ambiguous entitlement coordinates.
-		foreach (var entry in entries)
+		var wake = BeginWake(entries.Select(e => e.Profile).ToArray(), null, null);
+		wake.Run();
+		Apply(entities, wake, entries.Select(e => e.Members).ToArray());
+	}
+
+	/// <summary>SE-1096: the models of one wake. A group offline for 14 hours needed 150,000 model events, and on the
+	/// game thread that held a node for four minutes until the registry fenced it. So the game thread only validates the
+	/// timebase and takes the session's inputs here; <see cref="Run"/> reads the sun/work paths and runs the models on a
+	/// worker thread; the host admits and commits on the game thread once <see cref="Ready"/>. The models see the same
+	/// inputs as a synchronous wake at the same frame, so their results are the same.</summary>
+	internal sealed class Wake
+	{
+		internal byte[][] Sections;
+		internal int[] Section;
+		internal OfflineProfile[] Profiles;
+		internal (string Epoch, long Frame, long Generation, long SunTicks) Authority;
+		internal long Frame;
+		internal bool[] Content;
+		internal bool Rotating;
+		internal double Period;
+		internal long MaxFrames;
+		// The first failed path in profile order: no group of this wake may commit.
+		internal Exception PathFailure;
+		internal (OfflineProfile Model, OfflineResult Result)[] Models;
+		internal Exception[] Failures;
+		private volatile bool m_ready;
+		internal bool Ready => m_ready;
+
+		internal void Run()
 		{
-			OfflineInterval.ValidateSettlement(entry.Profile, Host.Cluster, authority);
-			ValidateBatteryModes(entry.Profile, entities);
-		}
-		var paths = entries.ToDictionary(e => e.Profile, e => ReadSunPath(e.Profile, wake));
-		var admitted = new List<OfflineProfile>();
-		foreach (var entry in entries)
-		{
-			var profile = entry.Profile;
 			try
 			{
-				if (profile.Members.Any(id => !entry.Members.Contains(id) || !entities.ContainsKey(id)))
+				var paths = new SunWorkPath[Profiles.Length];
+				for (int i = 0; i < Profiles.Length; i++)
+				{
+					try { paths[i] = ReadSunPath(Profiles[i], Frame, Rotating, MaxFrames); }
+					catch (Exception e) { PathFailure = e; return; }
+				}
+				Models = new (OfflineProfile, OfflineResult)[Profiles.Length];
+				Failures = new Exception[Profiles.Length];
+				for (int i = 0; i < Profiles.Length; i++)
+				{
+					try { Models[i] = Model(Profiles[i], Frame, paths[i], Content[i], Period, MaxFrames); }
+					catch (Exception e) { Failures[i] = e; }
+				}
+			}
+			finally { m_ready = true; }
+		}
+
+		internal void Start() => new System.Threading.Thread(Run) { IsBackground = true, Name = "OfflineWake", Priority = System.Threading.ThreadPriority.BelowNormal }.Start();
+
+		internal bool Matches(byte[][] sections) => Sections != null && sections.Length == Sections.Length
+			&& sections.Zip(Sections).All(x => x.First.AsSpan().SequenceEqual(x.Second));
+	}
+
+	/// <summary>Game thread. Throws, as a synchronous wake did, when the authority clock or a profile's timebase fails;
+	/// null when there is nothing to compensate.</summary>
+	internal static Wake BeginWake(OfflineProfile[] profiles, byte[][] sections, int[] section)
+	{
+		if (!HostSettings.GetBool("offline.compensate") || profiles.Length == 0) return null;
+		var authority = Host.Cluster ? Host.AuthorityClock() : default;
+		// Validate every timebase before any group can commit or thaw. A Skipped
+		// result is not a safe response to ambiguous entitlement coordinates.
+		foreach (var profile in profiles) OfflineInterval.ValidateSettlement(profile, Host.Cluster, authority);
+		return new Wake
+		{
+			Sections = sections, Section = section, Profiles = profiles, Authority = authority, Frame = Host.Cluster ? authority.Frame : Frame,
+			Content = profiles.Select(p => p.ContentHash == ContentHash(p.Definitions)).ToArray(),
+			Rotating = MySession.Static.Settings.EnableSunRotation, Period = SunPeriodFrames, MaxFrames = MaxFrames,
+		};
+	}
+
+	/// <summary>Game thread, once the wake is <see cref="Wake.Ready"/>. <paramref name="members"/> is each profile's recovery cover.</summary>
+	internal static void Apply(IDictionary<long, MyObjectBuilder_EntityBase> entities, Wake wake, HashSet<long>[] members)
+	{
+		var profiles = wake.Profiles;
+		foreach (var profile in profiles) ValidateBatteryModes(profile, entities);
+		if (wake.PathFailure != null) ExceptionDispatchInfo.Throw(wake.PathFailure);
+		var admitted = new List<int>();
+		for (int i = 0; i < profiles.Length; i++)
+		{
+			var profile = profiles[i];
+			try
+			{
+				if (profile.Members.Any(id => !members[i].Contains(id) || !entities.ContainsKey(id)))
 					throw new InvalidDataException("incomplete logical group in recovery cover");
 				if (profile.ContentHash != ContentHash(profile.Definitions)) throw new InvalidDataException("content mismatch");
-				admitted.Add(profile);
+				admitted.Add(i);
 			}
 			catch (Exception e) { Skipped(profile, e); }
 		}
 		// Ordered paths can require more events than a scalar clock. Any failed
 		// schema3 computation must retain its entire unpaid Final, not thaw a
-		// partially computed interval. Prepare all such results before native writes.
-		var prepared = admitted.Where(p => p.Schema == OfflineProfile.ClusterSchema)
-			.ToDictionary(p => p, p => ModelWithPath(p, wake, paths[p]));
-		foreach (var profile in admitted)
+		// partially computed interval. Check all such results before native writes.
+		foreach (int i in admitted)
+			if (profiles[i].Schema == OfflineProfile.ClusterSchema && wake.Failures[i] != null) ExceptionDispatchInfo.Throw(wake.Failures[i]);
+		foreach (int i in admitted)
 		{
 			try
 			{
-				var (model, result) = prepared.TryGetValue(profile, out var value) ? value : ModelWithPath(profile, wake, paths[profile]);
-				result.WakeClockGeneration = Host.Cluster ? authority.Generation : 0;
-				Commit(profile, model, entities);
-				Results[profile.Group] = result;
+				if (wake.Failures[i] != null) ExceptionDispatchInfo.Throw(wake.Failures[i]);
+				var (model, result) = wake.Models[i];
+				result.WakeClockGeneration = Host.Cluster ? wake.Authority.Generation : 0;
+				Commit(profiles[i], model, entities);
+				Results[profiles[i].Group] = result;
 				MyLog.Default?.WriteLineAndConsole("[ClusterPlugin] offline compensation " + JsonSerializer.Serialize(result, OfflineProfile.Json));
 			}
 			catch (Exception e)
 			{
-				Skipped(profile, e);
+				Skipped(profiles[i], e);
 			}
 		}
 	}
@@ -100,28 +170,35 @@ internal static partial class AccountingEngine
 	internal static (OfflineProfile Model, OfflineResult Result) ModelForHost(OfflineProfile profile, long wake)
 		=> ModelWithPath(profile, wake, ReadSunPath(profile, wake));
 
-	private static SunWorkPath ReadSunPath(OfflineProfile profile, long wake)
+	private static SunWorkPath ReadSunPath(OfflineProfile profile, long wake) => ReadSunPath(profile, wake, MySession.Static.Settings.EnableSunRotation, MaxFrames);
+
+	// No session state: a wake reads its paths on its worker thread.
+	private static SunWorkPath ReadSunPath(OfflineProfile profile, long wake, bool rotating, long maxFrames)
 	{
 		OfflineModel.ValidateClock(profile);
 		if (profile.Schema != OfflineProfile.ClusterSchema) return null;
-		bool rotating = MySession.Static.Settings.EnableSunRotation;
-        if (!rotating || !profile.Sources.Any(s => s.Curve is { Length: > 1 }) || wake <= profile.SimulatedThrough || MaxFrames == 0) return null;
-		long through = checked(profile.SimulatedThrough + Math.Min(wake - profile.SimulatedThrough, MaxFrames));
+        if (!rotating || !profile.Sources.Any(s => s.Curve is { Length: > 1 }) || wake <= profile.SimulatedThrough || maxFrames == 0) return null;
+		long through = checked(profile.SimulatedThrough + Math.Min(wake - profile.SimulatedThrough, maxFrames));
 		return SunWorkPath.Read(Host.SunPath(profile.ClockDomain, profile.ClockEpoch, profile.SimulatedThrough, through), profile.ClockEpoch, profile.SimulatedThrough, through);
 	}
 
+	private static double SunPeriodFrames => MySession.Static.Settings.EnableSunRotation ? MySession.Static.Settings.SunRotationIntervalMinutes * 60000.0 / 16 : 0;
+
 	private static (OfflineProfile Model, OfflineResult Result) ModelWithPath(OfflineProfile profile, long wake, SunWorkPath path)
+		=> Model(profile, wake, path, profile.ContentHash == ContentHash(profile.Definitions), SunPeriodFrames, MaxFrames);
+
+	// No session state: a wake runs its models on its worker thread.
+	private static (OfflineProfile Model, OfflineResult Result) Model(OfflineProfile profile, long wake, SunWorkPath path, bool content, double period, long maxFrames)
 	{
-		if (profile.ContentHash != ContentHash(profile.Definitions)) throw new InvalidDataException("content mismatch");
+		if (!content) throw new InvalidDataException("content mismatch");
 		var model = JsonSerializer.Deserialize<OfflineProfile>(JsonSerializer.Serialize(profile, OfflineProfile.Json), OfflineProfile.Json);
-		double period = MySession.Static.Settings.EnableSunRotation ? MySession.Static.Settings.SunRotationIntervalMinutes * 60000.0 / 16 : 0;
 		if (model.SunPeriodFrames != period)
 		{
 			model.SunPeriodFrames = period;
 			if (model.Confidence == "Exact") model.Confidence = "Approximate";
 		}
 		model.SunPath = path;
-		return (model, OfflineModel.Simulate(model, wake, MaxFrames));
+		return (model, OfflineModel.Simulate(model, wake, maxFrames));
 	}
 
 	internal static object Status() => new { enabled = HostSettings.GetBool("offline.compensate"), results = Results.Values.ToArray(), profiling = ProfilingStatus(), cache = OfflineRateCache.Status() };

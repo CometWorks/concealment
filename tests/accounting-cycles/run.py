@@ -7,10 +7,11 @@ repo = pathlib.Path(__file__).resolve().parents[2]
 out = pathlib.Path(sys.argv[1]).resolve()
 out.mkdir(parents=True, exist_ok=False)
 sources = repo / 'ServerPlugin/Accounting'
-for name in ['OfflineProfile.cs', 'SunWorkPath.cs', 'OfflineModel.cs', 'OfflineModel.Cycles.cs']:
+for name in ['OfflineProfile.cs', 'SunWorkPath.cs', 'OfflineModel.cs', 'OfflineModel.Cycles.cs', 'OfflineModel.Index.cs']:
     text = (sources / name).read_text()
     (out / name).write_text(text)
-    if name.startswith('OfflineModel'):
+    # Both models share the per-run index types of OfflineModel.Index.cs.
+    if name in ('OfflineModel.cs', 'OfflineModel.Cycles.cs'):
         serial = text.replace('OfflineModel', 'SerialModel')
         if name == 'OfflineModel.cs':
             needle = 'else elapsed += cycles.Advance(profile, result, elapsed, cycleBoundary);'

@@ -19,6 +19,7 @@ internal sealed class ModelIndex
 	internal readonly int[][] SourcesOf;
 	internal readonly (int Sink, int[] Sources)[] FeedbackPorts;
 	internal readonly ResourcePlan[] Resources;
+	internal readonly bool[] ElectricSource, ElectricSink, ElectricStorage;
 
 	internal ModelIndex(OfflineProfile p)
 	{
@@ -28,6 +29,9 @@ internal sealed class ModelIndex
 		FeedbackPorts = p.Sources.Select((s, i) => (Source: s, Index: i)).Where(s => s.Source.PowerFeedback).GroupBy(s => s.Source.PowerSink)
 			.Select(g => (g.Key, g.Select(s => s.Index).ToArray())).ToArray();
 		Resources = ResourcePlans(p);
+		ElectricSource = p.Sources.Select(s => s.Resource == OfflineModel.Electricity).ToArray();
+		ElectricSink = p.Sinks.Select(s => s.Resource == OfflineModel.Electricity).ToArray();
+		ElectricStorage = p.Storage.Select(s => s.Resource == OfflineModel.Electricity).ToArray();
 	}
 
 	// Allocate is also called on a bare profile, outside Simulate.

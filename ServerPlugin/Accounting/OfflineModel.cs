@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Concealment.Accounting;
 
@@ -279,24 +280,24 @@ internal static partial class OfflineModel
 			for (int i = 0; i < output.Length; i++)
 			{
 				var source = profile.Sources[i];
-				if (source.Resource == Electricity) result.ProducerEnergyMWh[source.Block] = CollectionExtensions.GetValueOrDefault(result.ProducerEnergyMWh, source.Block) + output[i] * step / 216000;
+				if (index.ElectricSource[i]) Accumulate(result.ProducerEnergyMWh, source.Block, output[i] * step / 216000);
 				if (source.ShadowAllowance != null)
 				{
 					int bin = SunBin(profile, source, angleFrame);
 					double raw = source.Curve[bin], extra = source.ShadowAllowance[bin];
-					if (extra > 0) result.SolarShadowAllowanceMWh[source.Block] = CollectionExtensions.GetValueOrDefault(result.SolarShadowAllowanceMWh, source.Block)
-						+ output[i] * extra / (raw + extra) * step / 216000;
+					if (extra > 0) Accumulate(result.SolarShadowAllowanceMWh, source.Block, output[i] * extra / (raw + extra) * step / 216000);
 				}
-				foreach (var fuel in source.Fuel.Where(_ => source.FuelTickFrames == 0))
-				{
-					if (!result.ProducerFuelConsumed.TryGetValue(source.Block, out var consumed)) result.ProducerFuelConsumed[source.Block] = consumed = [];
-					consumed[fuel.Item] = CollectionExtensions.GetValueOrDefault(consumed, fuel.Item) + (decimal)(output[i] * step) * fuel.Amount;
-				}
+				if (source.FuelTickFrames == 0)
+					foreach (var fuel in source.Fuel)
+					{
+						if (!result.ProducerFuelConsumed.TryGetValue(source.Block, out var consumed)) result.ProducerFuelConsumed[source.Block] = consumed = [];
+						Accumulate(consumed, fuel.Item, (decimal)(output[i] * step) * fuel.Amount);
+					}
 			}
 			for (int i = 0; i < input.Length; i++)
-				if (profile.Sinks[i].Resource == Electricity) result.ConsumerEnergyMWh[profile.Sinks[i].Block] = CollectionExtensions.GetValueOrDefault(result.ConsumerEnergyMWh, profile.Sinks[i].Block) + input[i] * step / 216000;
+				if (index.ElectricSink[i]) Accumulate(result.ConsumerEnergyMWh, profile.Sinks[i].Block, input[i] * step / 216000);
 			for (int i = 0; i < charging.Length; i++)
-				if (profile.Storage[i].Resource == Electricity) result.StorageInputEnergyMWh[profile.Storage[i].Block] = CollectionExtensions.GetValueOrDefault(result.StorageInputEnergyMWh, profile.Storage[i].Block) + charging[i] * step / 216000;
+				if (index.ElectricStorage[i]) Accumulate(result.StorageInputEnergyMWh, profile.Storage[i].Block, charging[i] * step / 216000);
 			foreach (var change in changes) Add(inventories[change.Key.Inventory], change.Key.Item, change.Value * (decimal)step);
 			for (int i = 0; i < profile.Sources.Count; i++)
 			{
@@ -363,7 +364,7 @@ internal static partial class OfflineModel
 				var production = profile.Production[i];
 				var recipe = choice[i];
 				if (recipe == null) continue;
-				if (production.Refinery) { result.ProductionUnits[production.Block] = CollectionExtensions.GetValueOrDefault(result.ProductionUnits, production.Block) + productionRate[i] * step; continue; }
+				if (production.Refinery) { Accumulate(result.ProductionUnits, production.Block, productionRate[i] * step); continue; }
 				production.Progress += productionRate[i] * step;
 				if (production.Progress < 1 - Epsilon) continue;
 				if (RecipeTransaction(profile, recipe, 1, true))
@@ -763,6 +764,10 @@ internal static partial class OfflineModel
 		}
 		return changed;
 	}
+
+	// One lookup where `sums[key] = GetValueOrDefault(sums, key) + value` took two; a new key also stores 0 + value.
+	private static void Accumulate<TKey>(Dictionary<TKey, double> sums, TKey key, double value) => CollectionsMarshal.GetValueRefOrAddDefault(sums, key, out _) += value;
+	private static void Accumulate<TKey>(Dictionary<TKey, decimal> sums, TKey key, decimal value) => CollectionsMarshal.GetValueRefOrAddDefault(sums, key, out _) += value;
 
 	private static Dictionary<string, decimal> Totals(OfflineProfile p) => p.Inventories.SelectMany(i => i.Stacks).GroupBy(s => s.Item).ToDictionary(g => g.Key, g => g.Sum(s => s.Amount));
 	private static double Mod(double value, double period) => (value % period + period) % period;

@@ -15,15 +15,22 @@ internal static partial class OfflineModel
 	private const double Epsilon = 1e-8;
 	internal const string Electricity = "MyObjectBuilder_GasProperties/Electricity";
 
-	internal static OfflineResult Simulate(OfflineProfile profile, long wakeFrame, long maxFrames)
+	// Past this many events a model fails, and a cluster wake keeps its unpaid Final.
+	internal const int EventLimit = 2_000_000;
+
+	/// <summary><paramref name="maxEvents"/> (SE-1096, offline.compensateMaxEvents) bounds the work like
+	/// <paramref name="maxFrames"/> bounds the time: the model stops at the event boundary it reached, the result is
+	/// Capped with the Frames simulated, and the rest of the interval is forfeited. Past <see cref="EventLimit"/> it fails.</summary>
+	internal static OfflineResult Simulate(OfflineProfile profile, long wakeFrame, long maxFrames, int maxEvents = int.MaxValue)
 	{
 		Validate(profile);
+		if (maxEvents < 1) throw new InvalidDataException("Offline event budget must be positive");
 		profile.Index = new(profile);
-		try { return Run(profile, wakeFrame, maxFrames); }
+		try { return Run(profile, wakeFrame, maxFrames, maxEvents); }
 		finally { ModelIndex.Release(profile); }
 	}
 
-	private static OfflineResult Run(OfflineProfile profile, long wakeFrame, long maxFrames)
+	private static OfflineResult Run(OfflineProfile profile, long wakeFrame, long maxFrames, int maxEvents)
 	{
 		var index = profile.Index;
 		if (wakeFrame < profile.SimulatedThrough || maxFrames < 0) throw new InvalidDataException("Offline clock moved backwards");
@@ -67,7 +74,13 @@ internal static partial class OfflineModel
 		var cycles = new StorageCycles(profile);
 		while (true)
 		{
-			if (++result.Events > 2_000_000) throw new InvalidDataException("Offline event budget exceeded; no partial result may be applied");
+			if (result.Events >= maxEvents)
+			{
+				result.Frames = (long)Math.Floor(elapsed / engineFramesPerClockFrame + Epsilon);
+				result.Capped = true;
+				break;
+			}
+			if (++result.Events > EventLimit) throw new InvalidDataException("Offline event budget exceeded; no partial result may be applied");
 			var choice = profile.Production.Select(p => Select(profile, p)).ToArray();
 			double[] required = profile.Sinks.Select(s => s.Required).ToArray();
 			foreach (var zone in profile.Upkeep.Where(z => z.PowerSink >= 0))

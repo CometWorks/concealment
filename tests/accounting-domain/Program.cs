@@ -51,6 +51,17 @@ var capped = Basis(4); capped.SunPath = PathFor([[0, 0]], 25);
 var capResult = OfflineModel.Simulate(capped, 100000000, 25);
 Check(capResult.Frames == 25 && capped.SimulatedThrough == 100000000 && capResult.Capped, "first capped history interval survives a much longer absence; excess forfeited");
 Check(OfflineModel.Simulate(capped, 100000000, 25).Frames == 0, "same wake cannot charge a second chunk");
+// SE-1096: the event budget caps like the hours cap, at the event boundary it reached; a budget that is not reached changes nothing.
+OfflineProfile Busy() { var p = Basis(720); p.SunPath = PathFor([[0, 0]], 300); return p; }
+var full = OfflineModel.Simulate(Busy(), 300, 300);
+var budgeted = Busy();
+var budgetResult = OfflineModel.Simulate(budgeted, 300, 300, 50);
+Check(budgetResult.Capped && budgetResult.Events == 50 && budgetResult.Frames > 0 && budgetResult.Frames < 300 && budgeted.SimulatedThrough == 300
+    && budgetResult.CompensatedTo == 300 && budgetResult.ProducerEnergyMWh[1] < full.ProducerEnergyMWh[1],
+    $"event budget caps at an event boundary and forfeits the rest: events={budgetResult.Events} frames={budgetResult.Frames}");
+Check(!full.Capped && JsonSerializer.Serialize(OfflineModel.Simulate(Busy(), 300, 300, full.Events), OfflineProfile.Json) == JsonSerializer.Serialize(full, OfflineProfile.Json),
+    "a budget the model does not reach leaves the result unchanged");
+Refuses(() => OfflineModel.Simulate(Busy(), 300, 300, 0), "a zero event budget refuses");
 foreach (string field in new[] { "ClockDomain", "ClockEpoch", "ClockGeneration", "SunClockTicks" })
 {
     var node = JsonNode.Parse(JsonSerializer.Serialize(Basis(4), OfflineProfile.Json))!.AsObject(); node.Remove(field);

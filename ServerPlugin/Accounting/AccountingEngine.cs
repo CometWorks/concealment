@@ -53,7 +53,7 @@ internal static partial class AccountingEngine
 
 	/// <summary>SE-1096: the models of one wake. A group offline for 14 hours needed 150,000 model events, and on the
 	/// game thread that held a node for four minutes until the registry fenced it. So the game thread only validates the
-	/// timebase and takes the session's inputs here; <see cref="Run"/> reads the sun/work paths and runs the models on a
+	/// timebase and takes the session's inputs here; <see cref="Run"/> hashes the definitions, reads the sun/work paths and runs the models on a
 	/// worker thread; the host admits and commits on the game thread once <see cref="Ready"/>. The models see the same
 	/// inputs as a synchronous wake at the same frame, so their results are the same.</summary>
 	internal sealed class Wake
@@ -64,6 +64,7 @@ internal static partial class AccountingEngine
 		internal (string Epoch, long Frame, long Generation, long SunTicks) Authority;
 		internal long Frame;
 		internal bool[] Content;
+		internal Exception[] ContentFailures;
 		internal bool Rotating;
 		internal double Period;
 		internal long MaxFrames;
@@ -86,8 +87,14 @@ internal static partial class AccountingEngine
 				}
 				Models = new (OfflineProfile, OfflineResult)[Profiles.Length];
 				Failures = new Exception[Profiles.Length];
+				Content = new bool[Profiles.Length];
+				ContentFailures = new Exception[Profiles.Length];
 				for (int i = 0; i < Profiles.Length; i++)
 				{
+					// Fingerprinting the definitions took up to 2 s per wake on the game thread. It only reads
+					// definitions and session settings, which do not change while the session runs.
+					try { Content[i] = Profiles[i].ContentHash == ContentHash(Profiles[i].Definitions); }
+					catch (Exception e) { ContentFailures[i] = e; continue; }
 					try { Models[i] = Model(Profiles[i], Frame, paths[i], Content[i], Period, MaxFrames); }
 					catch (Exception e) { Failures[i] = e; }
 				}
@@ -113,7 +120,6 @@ internal static partial class AccountingEngine
 		return new Wake
 		{
 			Sections = sections, Section = section, Profiles = profiles, Authority = authority, Frame = Host.Cluster ? authority.Frame : Frame,
-			Content = profiles.Select(p => p.ContentHash == ContentHash(p.Definitions)).ToArray(),
 			Rotating = MySession.Static.Settings.EnableSunRotation, Period = SunPeriodFrames, MaxFrames = MaxFrames,
 		};
 	}
@@ -132,7 +138,8 @@ internal static partial class AccountingEngine
 			{
 				if (profile.Members.Any(id => !members[i].Contains(id) || !entities.ContainsKey(id)))
 					throw new InvalidDataException("incomplete logical group in recovery cover");
-				if (profile.ContentHash != ContentHash(profile.Definitions)) throw new InvalidDataException("content mismatch");
+				if (wake.ContentFailures[i] != null) ExceptionDispatchInfo.Throw(wake.ContentFailures[i]);
+				if (!wake.Content[i]) throw new InvalidDataException("content mismatch");
 				admitted.Add(i);
 			}
 			catch (Exception e) { Skipped(profile, e); }

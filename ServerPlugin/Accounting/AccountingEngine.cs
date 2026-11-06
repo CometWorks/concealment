@@ -37,6 +37,7 @@ internal static partial class AccountingEngine
 	// Native world time advances 16ms per completed update. Resource rates use
 	// 1/60s per update; Cluster settles separately in durable WA work addresses.
 	internal static long MaxFrames => checked(HostSettings.GetInt("offline.compensateMaxHours") * FramesPerAuthorityHour);
+	internal static int MaxEvents => HostSettings.GetInt("offline.compensateMaxEvents");
 
 	/// <summary>Runs once, at the shared recovery seam, before any entity is instantiated. The source
 	/// save is immutable: a failed wake re-reads it; an ordinary new-generation Final drops profiles.</summary>
@@ -68,10 +69,12 @@ internal static partial class AccountingEngine
 		internal bool Rotating;
 		internal double Period;
 		internal long MaxFrames;
+		internal int MaxEvents;
 		// The first failed path in profile order: no group of this wake may commit.
 		internal Exception PathFailure;
 		internal (OfflineProfile Model, OfflineResult Result)[] Models;
 		internal Exception[] Failures;
+		internal double[] Seconds;
 		private volatile bool m_ready;
 		internal bool Ready => m_ready;
 
@@ -87,6 +90,7 @@ internal static partial class AccountingEngine
 				}
 				Models = new (OfflineProfile, OfflineResult)[Profiles.Length];
 				Failures = new Exception[Profiles.Length];
+				Seconds = new double[Profiles.Length];
 				Content = new bool[Profiles.Length];
 				ContentFailures = new Exception[Profiles.Length];
 				for (int i = 0; i < Profiles.Length; i++)
@@ -95,8 +99,10 @@ internal static partial class AccountingEngine
 					// definitions and session settings, which do not change while the session runs.
 					try { Content[i] = Profiles[i].ContentHash == ContentHash(Profiles[i].Definitions); }
 					catch (Exception e) { ContentFailures[i] = e; continue; }
-					try { Models[i] = Model(Profiles[i], Frame, paths[i], Content[i], Period, MaxFrames); }
+					long started = System.Diagnostics.Stopwatch.GetTimestamp();
+					try { Models[i] = Model(Profiles[i], Frame, paths[i], Content[i], Period, MaxFrames, MaxEvents); }
 					catch (Exception e) { Failures[i] = e; }
+					Seconds[i] = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds;
 				}
 			}
 			finally { m_ready = true; }
@@ -120,7 +126,7 @@ internal static partial class AccountingEngine
 		return new Wake
 		{
 			Sections = sections, Section = section, Profiles = profiles, Authority = authority, Frame = Host.Cluster ? authority.Frame : Frame,
-			Rotating = MySession.Static.Settings.EnableSunRotation, Period = SunPeriodFrames, MaxFrames = MaxFrames,
+			Rotating = MySession.Static.Settings.EnableSunRotation, Period = SunPeriodFrames, MaxFrames = MaxFrames, MaxEvents = MaxEvents,
 		};
 	}
 
@@ -165,6 +171,19 @@ internal static partial class AccountingEngine
 				Skipped(profiles[i], e);
 			}
 		}
+		LogWake(wake);
+	}
+
+	// SE-1096: what a slow wake spent its worker thread on, readable from the node log.
+	private static void LogWake(Wake wake)
+	{
+		if (wake.Seconds == null) return;
+		var groups = Enumerable.Range(0, wake.Profiles.Length).Where(i => wake.Models[i].Result != null).ToArray();
+		if (groups.Length == 0) return;
+		int longest = groups.MaxBy(i => wake.Seconds[i]);
+		var capped = groups.Where(i => wake.Models[i].Result.Capped && wake.Models[i].Result.Events >= wake.MaxEvents).Select(i => wake.Profiles[i].Group).ToArray();
+		MyLog.Default?.WriteLineAndConsole(FormattableString.Invariant($"[ClusterPlugin] offline compensation wake: {groups.Length} groups, {groups.Sum(i => (long)wake.Models[i].Result.Events)} events, model {groups.Sum(i => wake.Seconds[i]):F2} s; longest group={wake.Profiles[longest].Group} events={wake.Models[longest].Result.Events} {wake.Seconds[longest]:F2} s")
+			+ (capped.Length == 0 ? "" : $"; capped by offline.compensateMaxEvents={wake.MaxEvents}: groups {string.Join(",", capped)}"));
 	}
 
 	private static void Skipped(OfflineProfile profile, Exception error)
@@ -192,10 +211,10 @@ internal static partial class AccountingEngine
 	private static double SunPeriodFrames => MySession.Static.Settings.EnableSunRotation ? MySession.Static.Settings.SunRotationIntervalMinutes * 60000.0 / 16 : 0;
 
 	private static (OfflineProfile Model, OfflineResult Result) ModelWithPath(OfflineProfile profile, long wake, SunWorkPath path)
-		=> Model(profile, wake, path, profile.ContentHash == ContentHash(profile.Definitions), SunPeriodFrames, MaxFrames);
+		=> Model(profile, wake, path, profile.ContentHash == ContentHash(profile.Definitions), SunPeriodFrames, MaxFrames, MaxEvents);
 
 	// No session state: a wake runs its models on its worker thread.
-	private static (OfflineProfile Model, OfflineResult Result) Model(OfflineProfile profile, long wake, SunWorkPath path, bool content, double period, long maxFrames)
+	private static (OfflineProfile Model, OfflineResult Result) Model(OfflineProfile profile, long wake, SunWorkPath path, bool content, double period, long maxFrames, int maxEvents)
 	{
 		if (!content) throw new InvalidDataException("content mismatch");
 		var model = JsonSerializer.Deserialize<OfflineProfile>(JsonSerializer.Serialize(profile, OfflineProfile.Json), OfflineProfile.Json);
@@ -205,7 +224,7 @@ internal static partial class AccountingEngine
 			if (model.Confidence == "Exact") model.Confidence = "Approximate";
 		}
 		model.SunPath = path;
-		return (model, OfflineModel.Simulate(model, wake, maxFrames));
+		return (model, OfflineModel.Simulate(model, wake, maxFrames, maxEvents));
 	}
 
 	internal static object Status() => new { enabled = HostSettings.GetBool("offline.compensate"), results = Results.Values.ToArray(), profiling = ProfilingStatus(), cache = OfflineRateCache.Status() };

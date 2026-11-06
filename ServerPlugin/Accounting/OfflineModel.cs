@@ -585,8 +585,23 @@ internal static partial class OfflineModel
 	{
 		var stock = new Dictionary<(int Inventory, string Item), decimal>();
 		var deltas = new Dictionary<(int Inventory, string Item), decimal>();
-		var freeVolume = p.Inventories.Select((inv, i) => Math.Max(0, inv.MaxVolume - Volume(p, i))).ToArray();
-		var freeMass = p.Inventories.Select((inv, i) => Math.Max(0, inv.MaxMass - Mass(p, i))).ToArray();
+		// SE-1096: an inventory's free room only when an output leg first reads it. Computed for every inventory on
+		// every call (107 cargos on a base), it was most of a long wake's model time: infeasible recipes are checked
+		// again each event, and their input legs return before any output leg. Inputs come first, so an inventory's
+		// earlier input changes wait in order and are replayed onto the same expressions: the same values.
+		var freeVolume = new decimal[p.Inventories.Count];
+		var freeMass = new decimal[p.Inventories.Count];
+		var known = new bool[p.Inventories.Count];
+		Dictionary<int, List<(decimal Volume, decimal Mass)>> waiting = null;
+		void Room(int i)
+		{
+			if (known[i]) return;
+			known[i] = true;
+			freeVolume[i] = Math.Max(0, p.Inventories[i].MaxVolume - Volume(p, i));
+			freeMass[i] = Math.Max(0, p.Inventories[i].MaxMass - Mass(p, i));
+			if (waiting != null && waiting.Remove(i, out var changes))
+				foreach (var change in changes) { freeVolume[i] -= change.Volume; freeMass[i] -= change.Mass; }
+		}
 		foreach (var leg in recipe.Inputs.Select(m => (Material: m, Sign: -1)).Concat(recipe.Outputs.Select(m => (Material: m, Sign: 1))))
 		{
 			var material = leg.Material; var item = p.Items[material.Item];
@@ -595,11 +610,18 @@ internal static partial class OfflineModel
 			{
 				var key = (i, material.Item);
 				if (!stock.ContainsKey(key)) stock[key] = Amount(p.Inventories[i], material.Item);
+				if (leg.Sign > 0) Room(i);
 				decimal fits = leg.Sign < 0 ? stock[key] : Math.Min(item.Volume > 0 ? freeVolume[i] / item.Volume : decimal.MaxValue / 4,
 					item.Mass > 0 ? freeMass[i] / item.Mass : decimal.MaxValue / 4);
 				decimal amount = Math.Min(left, fits), delta = amount * leg.Sign;
 				stock[key] += delta; deltas[key] = CollectionExtensions.GetValueOrDefault(deltas, key) + delta;
-				freeVolume[i] -= delta * item.Volume; freeMass[i] -= delta * item.Mass;
+				if (known[i]) { freeVolume[i] -= delta * item.Volume; freeMass[i] -= delta * item.Mass; }
+				else
+				{
+					waiting ??= new();
+					if (!waiting.TryGetValue(i, out var changes)) waiting[i] = changes = new();
+					changes.Add((delta * item.Volume, delta * item.Mass));
+				}
 				left -= amount;
 				if (left <= 0) break;
 			}

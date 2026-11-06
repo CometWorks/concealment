@@ -68,11 +68,24 @@ internal static partial class AccountingEngine
 			}
 			catch (Exception e) { Skipped(profile, e); }
 		}
-		// Ordered paths can require more events than a scalar clock. Any failed
-		// schema3 computation must retain its entire unpaid Final, not thaw a
-		// partially computed interval. Prepare all such results before native writes.
-		var prepared = admitted.Where(p => p.Schema == OfflineProfile.ClusterSchema)
-			.ToDictionary(p => p, p => ModelWithPath(p, wake, paths[p]));
+		// Ordered paths can require more events than a scalar clock. Prepare all
+		// schema3 results before native writes, so none thaws a partially computed
+		// interval. Any other failure fails the load and keeps the unpaid Final for a retry.
+		var prepared = new Dictionary<OfflineProfile, (OfflineProfile Model, OfflineResult Result)>();
+		foreach (var profile in admitted.Where(p => p.Schema == OfflineProfile.ClusterSchema).ToArray())
+		{
+			try
+			{
+				prepared[profile] = ModelWithPath(profile, wake, paths[profile]);
+			}
+			catch (InvalidDataException e)
+			{
+				// Bad profile data fails the same way on every retry, and each retry claims a new
+				// recovery generation (SE-1151). Load this group uncompensated; the others still pay.
+				admitted.Remove(profile);
+				Skipped(profile, e);
+			}
+		}
 		foreach (var profile in admitted)
 		{
 			try

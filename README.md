@@ -309,6 +309,7 @@ python3 tests/accounting-mechanical/run.py /absolute/path/to/new/mechanical-outp
 python3 tests/accounting-physics/run.py /absolute/path/to/new/physics-output
 python3 tests/accounting-prediction/run.py /absolute/path/to/new/prediction-output
 python3 tests/accounting-cycles/run.py /absolute/path/to/new/cycle-output
+python3 tests/accounting-shadow/run.py /absolute/path/to/new/shadow-output
 ```
 
 The clock/JSON-boundary check consumes the built production DLL and native DS references. The recovery check extracts

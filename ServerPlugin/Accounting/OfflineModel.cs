@@ -263,6 +263,10 @@ internal static partial class OfflineModel
 				// with the remaining gap. Neither state can be held for an hour-long segment.
 				if (store.Kind == "Battery" && store.Mode != 2 && (store.Full && storageRate[i] < -Epsilon
 					|| !store.Full && store.Capacity - store.Amount < store.MaxInput / 2160)) step = Math.Min(step, 100);
+				// SE-1096: the step ends on the first whole frame inside that near-full band, so the rules above apply from
+				// there. A sun-run start every 61 frames used to stop the step close to it; a sun bin lasts 6,250 frames.
+				if (store.Kind == "Battery" && store.Mode != 2 && !store.Full && storageRate[i] > Epsilon && store.Capacity - store.Amount >= store.MaxInput / 2160)
+					step = Math.Min(step, Math.Max(1, Math.Ceiling((store.Capacity - store.Amount - store.MaxInput / 2160) / storageRate[i])));
 			}
 			if (feedback != null)
 			{

@@ -20,6 +20,7 @@ internal sealed class ModelIndex
 	internal readonly (int Sink, int[] Sources)[] FeedbackPorts;
 	internal readonly ResourcePlan[] Resources;
 	internal readonly bool[] ElectricSource, ElectricSink, ElectricStorage;
+	internal readonly Dictionary<int, (long From, long Until)> SunBinChanges = new();
 
 	internal ModelIndex(OfflineProfile p)
 	{

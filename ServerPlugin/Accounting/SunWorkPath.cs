@@ -50,18 +50,39 @@ internal sealed class SunWorkPath
         return p.SunFrame + (ticks - p.SunClockTicks.Value) / 160000d;
     }
 
+    // SE-1096: the step runs to the frame whose bin differs, across run starts that keep the bin. A run starts at almost
+    // every World Authority heartbeat (the sun clock drifts), so stopping at each one gave an event per 61 frames that
+    // changed nothing. The frames walked are remembered per bin count until that frame, for the next events.
     internal double UntilBinChange(OfflineProfile p, double address, int bins)
     {
         long frame = checked((long)Math.Floor(address + 1e-8));
+        var known = p.Index?.SunBinChanges;
+        if (known != null && known.TryGetValue(bins, out var range) && frame >= range.From && frame < range.Until)
+            return Math.Max(1e-8, range.Until - address);
         int run = Run(frame);
-        double angle = Angle(p, address);
         double width = p.SunPeriodFrames / bins;
-        double position = ((angle % p.SunPeriodFrames + p.SunPeriodFrames) % p.SunPeriodFrames) / width;
-        double boundary = Math.Round(position);
-        if (Math.Abs(position - boundary) <= 1e-8) position = boundary;
-        double units = Math.Max(1, Math.Ceiling((Math.Floor(position) + 1 - position) * width - 1e-8));
-        double next = Math.Min(Through, frame + units);
-        if (run + 1 < Runs.Length) next = Math.Min(next, Runs[run + 1][0]);
-        return Math.Max(1e-8, next - address);
+        double Position(long at)
+        {
+            double angle = Angle(p, at);
+            double position = ((angle % p.SunPeriodFrames + p.SunPeriodFrames) % p.SunPeriodFrames) / width;
+            double boundary = Math.Round(position);
+            return Math.Abs(position - boundary) <= 1e-8 ? boundary : position;
+        }
+        double start = Position(frame);
+        long bin = (long)Math.Floor(start) % bins, at = frame, until;
+        double position = start;
+        while (true)
+        {
+            double units = Math.Max(1, Math.Ceiling((Math.Floor(position) + 1 - position) * width - 1e-8));
+            long end = run + 1 < Runs.Length ? Runs[run + 1][0] : Through;
+            if (at + units < end) { until = (long)Math.Min(Through, at + units); break; }
+            if (end >= Through) { until = Through; break; }
+            at = end; run++;
+            position = Position(at);
+            if ((long)Math.Floor(position) % bins != bin) { until = at; break; }
+        }
+        known?.Remove(bins);
+        known?.Add(bins, (frame, until));
+        return Math.Max(1e-8, until - address);
     }
 }

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Concealment.Accounting;
 
@@ -17,6 +18,14 @@ internal static partial class OfflineModel
 	internal static OfflineResult Simulate(OfflineProfile profile, long wakeFrame, long maxFrames)
 	{
 		Validate(profile);
+		profile.Index = new(profile);
+		try { return Run(profile, wakeFrame, maxFrames); }
+		finally { ModelIndex.Release(profile); }
+	}
+
+	private static OfflineResult Run(OfflineProfile profile, long wakeFrame, long maxFrames)
+	{
+		var index = profile.Index;
 		if (wakeFrame < profile.SimulatedThrough || maxFrames < 0) throw new InvalidDataException("Offline clock moved backwards");
 		string migration = null;
 		if (profile.Schema == 1)
@@ -139,7 +148,7 @@ internal static partial class OfflineModel
 				var store = profile.Storage[i];
 				if (!store.Creative && store.Kind == "Battery" && store.Mode == 0 && store.TickFrames > 0 && store.Enabled
 					&& (store.Full || store.Capacity - store.Amount < store.MaxInput / 2160)
-					&& (charging[i] > Epsilon || Enumerable.Range(0, output.Length).Any(j => profile.Sources[j].Storage == i && output[j] > Epsilon))) store.Sampling = true;
+					&& (charging[i] > Epsilon || index.SourcesOf[i].Any(j => output[j] > Epsilon))) store.Sampling = true;
 			}
 			// NPC creative batteries ignore delivered power. Auto/Recharge refill on
 			// their real Update100 phase even without input; Discharge never refills.
@@ -205,6 +214,14 @@ internal static partial class OfflineModel
 			// Revisit an infeasible recipe when upstream flow supplies ingredients or frees output
 			// room. Exact single-material thresholds are events; shared/atomic capacity interactions
 			// are rechecked within one captured engine production tick, rather than a whole offline span.
+			// SE-1096: a material's rate adds only the inventories that have a change; the others added 0m, which
+			// changes neither the value nor the decimal scale.
+			var changesByItem = new Dictionary<string, Dictionary<int, decimal>>();
+			foreach (var change in changes)
+			{
+				if (!changesByItem.TryGetValue(change.Key.Item, out var byInventory)) changesByItem[change.Key.Item] = byInventory = [];
+				byInventory[change.Key.Inventory] = change.Value;
+			}
 			foreach (var production in profile.Production.Where(p => p.Enabled))
 			foreach (var recipe in production.Recipes.Where(r => !CanMake(profile, r, production.Refinery ? 0.000001m : 1m)))
 			{
@@ -212,11 +229,13 @@ internal static partial class OfflineModel
 				bool improving = false;
 				foreach (var material in recipe.Inputs)
 				{
-					decimal rate = material.Inventories.Sum(i => CollectionExtensions.GetValueOrDefault(changes, (i, material.Item)));
+					decimal rate = 0;
+					if (changesByItem.TryGetValue(material.Item, out var byInventory))
+						foreach (int i in material.Inventories) if (byInventory.TryGetValue(i, out decimal value)) rate += value;
 					decimal missing = material.Amount * units - Available(profile, material);
 					if (missing > 0 && rate > 0) { step = Math.Min(step, (double)(missing / rate)); improving = true; }
 				}
-				if (recipe.Outputs.Any(m => changes.Any(c => Enumerable.Contains(m.Inventories, c.Key.Inventory) && c.Value < 0))) improving = true;
+				if (recipe.Outputs.Any(m => changes.Any(c => c.Value < 0 && Enumerable.Contains(m.Inventories, c.Key.Inventory)))) improving = true;
 				if (improving) step = Math.Min(step, Math.Max(1, production.TickFrames));
 			}
 			foreach (var change in changes)
@@ -261,24 +280,24 @@ internal static partial class OfflineModel
 			for (int i = 0; i < output.Length; i++)
 			{
 				var source = profile.Sources[i];
-				if (source.Resource == Electricity) result.ProducerEnergyMWh[source.Block] = CollectionExtensions.GetValueOrDefault(result.ProducerEnergyMWh, source.Block) + output[i] * step / 216000;
+				if (index.ElectricSource[i]) Accumulate(result.ProducerEnergyMWh, source.Block, output[i] * step / 216000);
 				if (source.ShadowAllowance != null)
 				{
 					int bin = SunBin(profile, source, angleFrame);
 					double raw = source.Curve[bin], extra = source.ShadowAllowance[bin];
-					if (extra > 0) result.SolarShadowAllowanceMWh[source.Block] = CollectionExtensions.GetValueOrDefault(result.SolarShadowAllowanceMWh, source.Block)
-						+ output[i] * extra / (raw + extra) * step / 216000;
+					if (extra > 0) Accumulate(result.SolarShadowAllowanceMWh, source.Block, output[i] * extra / (raw + extra) * step / 216000);
 				}
-				foreach (var fuel in source.Fuel.Where(_ => source.FuelTickFrames == 0))
-				{
-					if (!result.ProducerFuelConsumed.TryGetValue(source.Block, out var consumed)) result.ProducerFuelConsumed[source.Block] = consumed = [];
-					consumed[fuel.Item] = CollectionExtensions.GetValueOrDefault(consumed, fuel.Item) + (decimal)(output[i] * step) * fuel.Amount;
-				}
+				if (source.FuelTickFrames == 0)
+					foreach (var fuel in source.Fuel)
+					{
+						if (!result.ProducerFuelConsumed.TryGetValue(source.Block, out var consumed)) result.ProducerFuelConsumed[source.Block] = consumed = [];
+						Accumulate(consumed, fuel.Item, (decimal)(output[i] * step) * fuel.Amount);
+					}
 			}
 			for (int i = 0; i < input.Length; i++)
-				if (profile.Sinks[i].Resource == Electricity) result.ConsumerEnergyMWh[profile.Sinks[i].Block] = CollectionExtensions.GetValueOrDefault(result.ConsumerEnergyMWh, profile.Sinks[i].Block) + input[i] * step / 216000;
+				if (index.ElectricSink[i]) Accumulate(result.ConsumerEnergyMWh, profile.Sinks[i].Block, input[i] * step / 216000);
 			for (int i = 0; i < charging.Length; i++)
-				if (profile.Storage[i].Resource == Electricity) result.StorageInputEnergyMWh[profile.Storage[i].Block] = CollectionExtensions.GetValueOrDefault(result.StorageInputEnergyMWh, profile.Storage[i].Block) + charging[i] * step / 216000;
+				if (index.ElectricStorage[i]) Accumulate(result.StorageInputEnergyMWh, profile.Storage[i].Block, charging[i] * step / 216000);
 			foreach (var change in changes) Add(inventories[change.Key.Inventory], change.Key.Item, change.Value * (decimal)step);
 			for (int i = 0; i < profile.Sources.Count; i++)
 			{
@@ -324,7 +343,8 @@ internal static partial class OfflineModel
 					else if (store.ElapsedFrames + Epsilon >= store.TickFrames)
 					{
 						double[] phaseOutput = feedback?.SettlementOutput ?? output, phaseCharging = feedback?.SettlementCharging ?? charging;
-						float delivered = (float)profile.Sources.Select((source, index) => source.Storage == i ? phaseOutput[index] : 0).Sum();
+						// The sum skips other storage's sources, whose +0 terms change no partial sum.
+						float delivered = (float)index.SourcesOf[i].Sum(j => phaseOutput[j]);
 						float received = (float)phaseCharging[i];
 						float net = store.Creative ? 3600f * (float)store.Capacity / 8f
 							: store.Mode == 2 ? -delivered : store.Mode == 1 ? received : received - delivered;
@@ -344,7 +364,7 @@ internal static partial class OfflineModel
 				var production = profile.Production[i];
 				var recipe = choice[i];
 				if (recipe == null) continue;
-				if (production.Refinery) { result.ProductionUnits[production.Block] = CollectionExtensions.GetValueOrDefault(result.ProductionUnits, production.Block) + productionRate[i] * step; continue; }
+				if (production.Refinery) { Accumulate(result.ProductionUnits, production.Block, productionRate[i] * step); continue; }
 				production.Progress += productionRate[i] * step;
 				if (production.Progress < 1 - Epsilon) continue;
 				if (RecipeTransaction(profile, recipe, 1, true))
@@ -428,8 +448,8 @@ internal static partial class OfflineModel
 			if (phases.Count >= 256) throw new InvalidDataException("Native resource feedback cycle did not repeat");
 			states.Add(key, phases.Count);
 			var demand = (double[])required.Clone();
-			foreach (var ports in p.Sources.Select((s, i) => (Source: s, Index: i)).Where(s => s.Source.PowerFeedback).GroupBy(s => s.Source.PowerSink))
-				demand[ports.Key] = ports.Any(s => producing[s.Index]) ? ports.Max(s => s.Source.OperationalPower) : ports.Max(s => s.Source.IdlePower);
+			foreach (var (sink, ports) in p.Index.FeedbackPorts)
+				demand[sink] = ports.Any(i => producing[i]) ? ports.Max(i => p.Sources[i].OperationalPower) : ports.Max(i => p.Sources[i].IdlePower);
 			for (int i = 0; i < p.Storage.Count; i++)
 				if (p.Storage[i].PowerSink >= 0 && p.Storage[i].IdlePower >= 0)
 					demand[p.Storage[i].PowerSink] = transferring[i] ? p.Storage[i].OperationalPower : p.Storage[i].IdlePower;
@@ -441,7 +461,7 @@ internal static partial class OfflineModel
 			bool[] nextPowered = Enumerable.Range(0, p.Sinks.Count).Select(i => Powered(p, i, demand, input)).ToArray();
 			bool[] nextProducing = output.Select(v => v > Epsilon).ToArray();
 			bool[] nextTransferring = Enumerable.Range(0, p.Storage.Count).Select(i => charging[i] > Epsilon
-				|| Enumerable.Range(0, p.Sources.Count).Any(j => p.Sources[j].Storage == i && nextProducing[j])
+				|| p.Index.SourcesOf[i].Any(j => nextProducing[j])
 				// ExecuteGasTransfer updates demand only for nonzero transfer. A working
 				// callback refreshes it on power change; a quiet frame alone does not.
 				|| p.Storage[i].PowerSink >= 0 && transferring[i] && nextPowered[p.Storage[i].PowerSink] == powered[p.Storage[i].PowerSink]).ToArray();
@@ -494,21 +514,26 @@ internal static partial class OfflineModel
 	private static void AllocatePass(OfflineProfile p, double[] demand, double[] maximum, double[] input, double[] output, double[] charging, bool[] workingStorage, double[] previous)
 	{
 		Array.Clear(input); Array.Clear(output); Array.Clear(charging);
-		foreach (string resource in p.Sinks.Select(s => s.Resource).Concat(p.Sources.Select(s => s.Resource)).Concat(p.Storage.Select(s => s.Resource)).Distinct())
+		var sourcesOf = p.Index?.SourcesOf ?? ModelIndex.SourcesOfStorage(p);
+		// SE-1096: the plan holds what the LINQ groups here were; the sums below run in the same order.
+		foreach (var plan in p.Index?.Resources ?? ModelIndex.ResourcePlans(p))
 		{
-			int[] sources = Enumerable.Range(0, maximum.Length).Where(i => p.Sources[i].Resource == resource).ToArray();
-			double available = sources.Sum(i => maximum[i]);
+			double available = 0;
+			foreach (int i in plan.Sources) available += maximum[i];
 			double used = 0;
-			var ordinary = Enumerable.Range(0, demand.Length).Where(i => p.Sinks[i].Resource == resource)
-				.Select(i => (Index: i, Priority: p.Sinks[i].Priority, Group: p.Sinks[i].Group, Rate: demand[i], Adaptible: p.Sinks[i].Adaptible, Store: false)).ToList();
-			var storageDemands = Enumerable.Range(0, p.Storage.Count).Where(i => p.Storage[i].Resource == resource)
-				.Select(i => (Index: i, Priority: p.Storage[i].Priority, Group: p.Storage[i].Group, Rate: workingStorage?[i] == false ? 0 : StorageDemand(p, i, p.Storage[i].Kind == "Engine" ? previous : output), Adaptible: true, Store: true)).ToArray();
-			ordinary.AddRange(storageDemands.Where(s => !p.Storage[s.Index].Pair));
-			foreach (var group in ordinary.GroupBy(s => (s.Priority, s.Group)).OrderBy(g => g.Key.Priority))
+			var rates = new double[plan.Storage.Length];
+			for (int k = 0; k < rates.Length; k++)
 			{
-				double required = group.Sum(s => s.Rate);
-				double ratio = p.Simplified ? 1 : required <= available + Epsilon ? 1 : group.All(s => s.Adaptible) && required > 0 ? available / required : 0;
-				foreach (var sink in group) { if (sink.Store) charging[sink.Index] = sink.Rate * ratio; else input[sink.Index] = sink.Rate * ratio; }
+				int s = plan.Storage[k];
+				rates[k] = workingStorage?[s] == false ? 0 : StorageDemand(p, s, p.Storage[s].Kind == "Engine" ? previous : output, sourcesOf);
+			}
+			foreach (var group in plan.Ordinary)
+			{
+				double required = 0;
+				bool adaptible = true;
+				foreach (var sink in group) { required += sink.Store ? rates[sink.Slot] : demand[sink.Index]; adaptible &= sink.Adaptible; }
+				double ratio = p.Simplified ? 1 : required <= available + Epsilon ? 1 : adaptible && required > 0 ? available / required : 0;
+				foreach (var sink in group) { if (sink.Store) charging[sink.Index] = rates[sink.Slot] * ratio; else input[sink.Index] = demand[sink.Index] * ratio; }
 				double allocated = required * ratio;
 				available = Math.Max(0, available - allocated); used += allocated;
 			}
@@ -516,30 +541,36 @@ internal static partial class OfflineModel
 			{
 				// Native RecomputeResourceDistributionPartial dispatches its paired
 				// reservoirs before ordinary source priority groups, even before solar.
-				foreach (var group in sources.GroupBy(i => p.Sources[i].Storage >= 0 && p.Storage[p.Sources[i].Storage].Pair
-					? (Priority: int.MinValue, Group: "") : (p.Sources[i].Priority, p.Sources[i].Group)).OrderBy(g => g.Key.Priority))
+				foreach (var group in plan.Dispatch)
 				{
 					double Capacity(int i) => limitStorage && p.Sources[i].Storage >= 0 && p.Storage[p.Sources[i].Storage].Pair ? output[i] : maximum[i];
-					double capacity = group.Sum(Capacity);
+					double capacity = 0;
+					foreach (int i in group) capacity += Capacity(i);
 					double ratio = capacity <= 0 ? 0 : Math.Min(1, needed / capacity);
 					foreach (int i in group) output[i] = Capacity(i) * ratio;
 					needed = Math.Max(0, needed - capacity * ratio);
 				}
 			}
 			// Stockpiles may deliberately draw from discharging storage.
-			var stockpiles = storageDemands.Where(s => p.Storage[s.Index].Pair && p.Storage[s.Index].Mode == 1).ToArray();
-			double stockRequired = stockpiles.Sum(s => s.Rate);
+			double stockRequired = 0;
+			foreach (int k in plan.Stockpiles) stockRequired += rates[k];
 			double stockRatio = p.Simplified ? 1 : stockRequired <= 0 ? 0 : Math.Min(1, available / stockRequired);
-			foreach (var sink in stockpiles) charging[sink.Index] = sink.Rate * stockRatio;
+			foreach (int k in plan.Stockpiles) charging[plan.Storage[k]] = rates[k] * stockRatio;
 			used += stockRequired * stockRatio;
 			Dispatch(used, false);
 			// Auto storage can take remaining generator supply, never extra discharge of itself or a peer.
-			double external = sources.Where(i => p.Sources[i].Storage < 0 || !p.Storage[p.Sources[i].Storage].Pair).Sum(i => maximum[i] - output[i]);
-			var autos = storageDemands.Where(s => p.Storage[s.Index].Pair && p.Storage[s.Index].Mode != 1)
-				.Select(s => s with { Rate = workingStorage?[s.Index] == false ? 0 : StorageDemand(p, s.Index, output) }).ToArray();
-			double autoRequired = autos.Sum(s => s.Rate);
+			double external = 0;
+			foreach (int i in plan.External) external += maximum[i] - output[i];
+			var autoRates = new double[plan.Autos.Length];
+			double autoRequired = 0;
+			for (int a = 0; a < autoRates.Length; a++)
+			{
+				int s = plan.Storage[plan.Autos[a]];
+				autoRates[a] = workingStorage?[s] == false ? 0 : StorageDemand(p, s, output, sourcesOf);
+				autoRequired += autoRates[a];
+			}
 			double autoRatio = p.Simplified ? 1 : autoRequired <= 0 ? 0 : Math.Min(1, Math.Max(0, external) / autoRequired);
-			foreach (var sink in autos) charging[sink.Index] = sink.Rate * autoRatio;
+			for (int a = 0; a < autoRates.Length; a++) charging[plan.Storage[plan.Autos[a]]] = autoRates[a] * autoRatio;
 			used += autoRequired * autoRatio;
 			Dispatch(used, true);
 		}
@@ -550,11 +581,10 @@ internal static partial class OfflineModel
 	private static bool Powered(OfflineProfile p, int sink, double[] required, double[] input) => sink < 0
 		|| (input[sink] > 0 || required[sink] == 0) && (p.Sinks[sink].Adaptible || input[sink] + Epsilon >= required[sink]);
 
-	private static double StorageDemand(OfflineProfile p, int index, double[] output)
+	private static double StorageDemand(OfflineProfile p, int index, double[] output, int[][] sourcesOf)
 	{
 		var store = p.Storage[index];
-		double outgoing = Enumerable.Range(0, p.Sources.Count).Where(i => p.Sources[i].Storage == index)
-			.Sum(i => output[i] * p.Sources[i].StorageCost);
+		double outgoing = sourcesOf[index].Sum(i => output[i] * p.Sources[i].StorageCost);
 		if (!store.Enabled || store.Kind == "Battery" && (store.Mode == 2 || store.Full)) return 0;
 		double gap = Math.Max(0, store.Capacity - store.Amount);
 		if (store.Kind == "Battery") return Math.Min(store.MaxInput, gap * 2160 + outgoing * 216000);
@@ -579,9 +609,10 @@ internal static partial class OfflineModel
 		return null;
 	}
 
-	private static bool CanMake(OfflineProfile p, OfflineRecipe recipe, decimal units) => recipe.UnitsPerFrame > 0 && RecipeTransaction(p, recipe, units, false);
+	private static bool CanMake(OfflineProfile p, OfflineRecipe recipe, decimal units) => recipe.UnitsPerFrame > 0
+		&& (p.Index?.CanMake(p, recipe, units) ?? RecipeTransaction(p, recipe, units, false));
 
-	private static bool RecipeTransaction(OfflineProfile p, OfflineRecipe recipe, decimal units, bool apply)
+	internal static bool RecipeTransaction(OfflineProfile p, OfflineRecipe recipe, decimal units, bool apply)
 	{
 		var stock = new Dictionary<(int Inventory, string Item), decimal>();
 		var deltas = new Dictionary<(int Inventory, string Item), decimal>();
@@ -631,10 +662,25 @@ internal static partial class OfflineModel
 		return true;
 	}
 
-	internal static decimal Amount(OfflineInventory inventory, string item) => inventory.Stacks.Where(s => s.Item == item).Sum(s => s.Amount);
-	private static decimal Available(OfflineProfile p, OfflineMaterial material) => material.Inventories.Sum(i => Amount(p.Inventories[i], material.Item));
-	private static decimal Volume(OfflineProfile p, int i) => p.Inventories[i].Stacks.Sum(s => s.Amount * p.Items[s.Item].Volume);
-	private static decimal Mass(OfflineProfile p, int i) => p.Inventories[i].Stacks.Sum(s => s.Amount * p.Items[s.Item].Mass);
+	// While Simulate runs, the stock sums are memos of these same expressions; Add drops an inventory's memo.
+	internal static decimal Amount(OfflineInventory inventory, string item)
+	{
+		var memo = inventory.Memo;
+		if (memo == null) return inventory.Stacks.Where(s => s.Item == item).Sum(s => s.Amount);
+		if (!memo.Amounts.TryGetValue(item, out decimal amount)) memo.Amounts[item] = amount = inventory.Stacks.Where(s => s.Item == item).Sum(s => s.Amount);
+		return amount;
+	}
+	private static decimal Available(OfflineProfile p, OfflineMaterial material) => p.Index?.Available(p, material) ?? material.Inventories.Sum(i => Amount(p.Inventories[i], material.Item));
+	private static decimal Volume(OfflineProfile p, int i)
+	{
+		var memo = p.Inventories[i].Memo;
+		return memo == null ? p.Inventories[i].Stacks.Sum(s => s.Amount * p.Items[s.Item].Volume) : memo.Volume ??= p.Inventories[i].Stacks.Sum(s => s.Amount * p.Items[s.Item].Volume);
+	}
+	private static decimal Mass(OfflineProfile p, int i)
+	{
+		var memo = p.Inventories[i].Memo;
+		return memo == null ? p.Inventories[i].Stacks.Sum(s => s.Amount * p.Items[s.Item].Mass) : memo.Mass ??= p.Inventories[i].Stacks.Sum(s => s.Amount * p.Items[s.Item].Mass);
+	}
 	private static decimal Fits(OfflineProfile p, OfflineMaterial m) => m.Inventories.Sum(i => Free(p, i, m.Item));
 	private static decimal Free(OfflineProfile p, int i, string item)
 	{
@@ -678,6 +724,7 @@ internal static partial class OfflineModel
 
 	private static void Add(OfflineInventory inventory, string item, decimal amount)
 	{
+		inventory.Memo?.Changed();
 		if (amount > 0)
 		{
 			var stack = inventory.Stacks.FirstOrDefault(s => s.Item == item);
@@ -717,6 +764,10 @@ internal static partial class OfflineModel
 		}
 		return changed;
 	}
+
+	// One lookup where `sums[key] = GetValueOrDefault(sums, key) + value` took two; a new key also stores 0 + value.
+	private static void Accumulate<TKey>(Dictionary<TKey, double> sums, TKey key, double value) => CollectionsMarshal.GetValueRefOrAddDefault(sums, key, out _) += value;
+	private static void Accumulate<TKey>(Dictionary<TKey, decimal> sums, TKey key, decimal value) => CollectionsMarshal.GetValueRefOrAddDefault(sums, key, out _) += value;
 
 	private static Dictionary<string, decimal> Totals(OfflineProfile p) => p.Inventories.SelectMany(i => i.Stacks).GroupBy(s => s.Item).ToDictionary(g => g.Key, g => g.Sum(s => s.Amount));
 	private static double Mod(double value, double period) => (value % period + period) % period;

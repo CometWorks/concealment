@@ -18,7 +18,7 @@ methods += text[text.index('internal static OfflineResult[] DryRun('):text.index
 out = Path(sys.argv[1]).resolve()
 out.mkdir(parents=True, exist_ok=False)
 (out / 'Check.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><LangVersion>14</LangVersion><UseSharedCompilation>false</UseSharedCompilation><NoWarn>CS0649</NoWarn></PropertyGroup></Project>')
-(out / 'Subject.cs').write_text('using System.Text.Json; namespace Concealment.Accounting; static class AccountingEngine { internal const long FramesPerAuthorityHour=225000; internal static long MaxFrames=72*FramesPerAuthorityHour; internal static string ContentHash(string[] definitions)=>"current";\n' + methods + '\n}')
+(out / 'Subject.cs').write_text('using System.Text.Json; namespace Concealment.Accounting; static class AccountingEngine { internal const long FramesPerAuthorityHour=225000; internal static long MaxFrames=72*FramesPerAuthorityHour; internal static int MaxEvents=int.MaxValue; internal static string ContentHash(string[] definitions)=>"current";\n' + methods + '\n}')
 inputs = {str(source): hashlib.sha256(source.read_bytes()).hexdigest()}
 for name in ('OfflineProfile.cs', 'OfflineModel.cs', 'OfflineModel.Cycles.cs', 'OfflineModel.Index.cs', 'SunWorkPath.cs'):
     path = root / 'ServerPlugin/Accounting' / name

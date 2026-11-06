@@ -107,6 +107,7 @@ internal sealed class StandaloneAccounting : IDisposable
     {
         "offline.compensate" => "true",
         "offline.compensateMaxHours" => plugin.ConfigData.OfflineCompensationMaxHours.ToString(CultureInfo.InvariantCulture),
+        "offline.compensateMaxEvents" => "500000",
         "offline.settleFrames" => "300", "offline.observeSeconds" => "180",
         "offline.rotateProduction" => "true", "offline.solarSteps" => "72",
         "offline.cacheTolerance" => "0.02", "offline.unknownBlocks" => "Freeze",

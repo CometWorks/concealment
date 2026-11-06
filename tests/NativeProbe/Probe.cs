@@ -202,7 +202,7 @@ public sealed partial class Probe : IPlugin
             ["clockFrameSeconds"] = 1.0 / 60,
             ["clock"] = (Func<double>)(() => MySession.Static.ElapsedGameTime.TotalMilliseconds),
             ["setting"] = (Func<string,string>)(key => key switch {
-                "offline.compensate" => "true", "offline.compensateMaxHours" => "72",
+                "offline.compensate" => "true", "offline.compensateMaxHours" => "72", "offline.compensateMaxEvents" => "500000",
                 "offline.settleFrames" => "300", "offline.observeSeconds" => "180",
                 "offline.rotateProduction" => "true", "offline.solarSteps" => "72",
                 "offline.cacheTolerance" => "0.02", "offline.unknownBlocks" => "Freeze",

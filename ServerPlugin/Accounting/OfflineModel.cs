@@ -13,9 +13,12 @@ namespace Concealment.Accounting;
 internal static partial class OfflineModel
 {
 	private const double Epsilon = 1e-8;
+	// .NET 10 System.Text.Json writes 2^-25 as 2.980232238769531E-08, which reads back one ulp low.
+	// A saved allowance of exactly 5 % then exceeds its curve by a rounding error (SE-1151).
+	private const double ShadowRounding = 1e-12;
 	internal const string Electricity = "MyObjectBuilder_GasProperties/Electricity";
 
-	// Past this many events a model fails, and a cluster wake keeps its unpaid Final.
+	// Past this many events a model fails, and its group is woken uncompensated (SE-1151).
 	internal const int EventLimit = 2_000_000;
 
 	/// <summary><paramref name="maxEvents"/> (SE-1096, offline.compensateMaxEvents) bounds the work like
@@ -301,7 +304,7 @@ internal static partial class OfflineModel
 				if (source.ShadowAllowance != null)
 				{
 					int bin = SunBin(profile, source, angleFrame);
-					double raw = source.Curve[bin], extra = source.ShadowAllowance[bin];
+					double raw = source.Curve[bin], extra = ShadowAllowance(source, bin);
 					if (extra > 0) Accumulate(result.SolarShadowAllowanceMWh, source.Block, output[i] * extra / (raw + extra) * step / 216000);
 				}
 				if (source.FuelTickFrames == 0)
@@ -492,9 +495,12 @@ internal static partial class OfflineModel
 		if (source.Storage >= 0 && p.Storage[source.Storage].Amount <= Epsilon) return 0;
 		if (source.Fuel.Any(f => Available(p, f) < 0.000001m)) return 0;
 		int bin = source.Curve is { Length: > 0 } ? SunBin(p, source, sunFrame) : 0;
-		double curve = source.Curve is { Length: > 0 } ? source.Curve[bin] + (source.ShadowAllowance?[bin] ?? 0) : 1;
+		double curve = source.Curve is { Length: > 0 } ? source.Curve[bin] + ShadowAllowance(source, bin) : 1;
 		return source.Maximum * curve;
 	}
+
+	private static double ShadowAllowance(OfflineSource source, int bin) => source.ShadowAllowance == null ? 0
+		: Math.Min(source.ShadowAllowance[bin], Math.Min(source.Curve[bin] * 0.05, 1 - source.Curve[bin]));
 
 	private static int SunBin(OfflineProfile p, OfflineSource source, double frame) => p.SunPeriodFrames <= 0 ? 0
 		: (int)SunPosition(frame, p.SunPeriodFrames, source.Curve.Length) % source.Curve.Length;
@@ -842,7 +848,7 @@ internal static partial class OfflineModel
 			if (source.Kind != "Environmental" || source.Resource != Electricity || source.Storage >= 0 || source.Fuel.Count != 0
 				|| source.Curve == null || source.ShadowAllowance.Length != source.Curve.Length
 				|| source.ShadowAllowance.Where((extra, i) => !double.IsFinite(extra) || extra < 0
-					|| extra > source.Curve[i] * 0.05 || source.Curve[i] + extra > 1).Any())
+					|| extra > source.Curve[i] * 0.05 * (1 + ShadowRounding) || source.Curve[i] + extra > 1 + ShadowRounding).Any())
 				throw new InvalidDataException("Invalid solar shadow allowance");
 		foreach (var sink in p.Sinks) if (!double.IsFinite(sink.Required) || sink.Required < 0) throw new InvalidDataException("Invalid offline sink");
 		foreach (var material in p.Sources.SelectMany(s => s.Fuel).Concat(p.Production.SelectMany(b => b.Recipes).SelectMany(r => r.Inputs.Concat(r.Outputs)))

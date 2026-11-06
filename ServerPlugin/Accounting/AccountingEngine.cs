@@ -150,11 +150,12 @@ internal static partial class AccountingEngine
 			}
 			catch (Exception e) { Skipped(profile, e); }
 		}
-		// Ordered paths can require more events than a scalar clock. Any failed
-		// schema3 computation must retain its entire unpaid Final, not thaw a
-		// partially computed interval. Check all such results before native writes.
+		// Ordered paths can require more events than a scalar clock. Check all schema3
+		// results before native writes, so none thaws a partially computed interval.
+		// Any failure but bad data fails the load and keeps the unpaid Final for a retry.
 		foreach (int i in admitted)
-			if (profiles[i].Schema == OfflineProfile.ClusterSchema && wake.Failures[i] != null) ExceptionDispatchInfo.Throw(wake.Failures[i]);
+			if (profiles[i].Schema == OfflineProfile.ClusterSchema && wake.Failures[i] is { } failure and not InvalidDataException)
+				ExceptionDispatchInfo.Throw(failure);
 		foreach (int i in admitted)
 		{
 			try

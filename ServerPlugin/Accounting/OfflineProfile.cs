@@ -18,6 +18,7 @@ internal sealed class OfflineProfile
 	public long ClockGeneration;
 	public long? SunClockTicks;
 	[JsonIgnore] internal SunWorkPath SunPath;
+	[JsonIgnore] internal ModelIndex Index; // only while Simulate runs
 	public static readonly JsonSerializerOptions Json = new() { IncludeFields = true };
 	[JsonRequired] public int Schema = CurrentSchema;
 	public long Group;
@@ -59,6 +60,7 @@ internal sealed class OfflineInventory
 	public string InventoryId;
 	public decimal MaxVolume, MaxMass;
 	public List<OfflineStack> Stacks = [];
+	[JsonIgnore] internal InventoryMemo Memo; // only while Simulate runs
 }
 internal sealed class OfflineMaterial
 {

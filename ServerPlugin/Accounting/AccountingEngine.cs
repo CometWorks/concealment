@@ -1,6 +1,7 @@
 // Copyright (c) 2026 CometWorks. Extracted from Cluster (MIT origin).
 // See ServerPlugin/Accounting/LICENSE and NOTICE for the retained permission notice.
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -264,6 +265,8 @@ internal static partial class AccountingEngine
 			if (!ReferenceEquals(m_contentSession, MySession.Static) || m_modContent == null)
 			{
 				m_contentSession = MySession.Static;
+				m_contentHashes.Clear();
+				m_fingerprints.Clear();
 				string[] paths = MySession.Static.Mods.Select(m => m.GetPath()).ToArray();
 				m_modContent = paths.Length == 0 ? Task.FromResult(Convert.ToHexString(SHA256.HashData(Array.Empty<byte>()))) : Task.Run(() =>
 				{
@@ -286,14 +289,17 @@ internal static partial class AccountingEngine
 		}
 	}
 
+	// Definitions and mods do not change while a session runs, but the reflection walk over them took
+	// about 15 s per sweep for a 207-ship partition (SE-1299). Fingerprints are cached per definition
+	// and whole hashes per settings and definition set, both until the session changes.
+	private static readonly ConcurrentDictionary<string, byte[]> m_fingerprints = new(StringComparer.Ordinal);
+	private static readonly ConcurrentDictionary<string, string> m_contentHashes = new(StringComparer.Ordinal);
+
 	internal static string ContentHash(IEnumerable<string> definitions)
 	{
 		using var stream = new MemoryStream();
-		void Append(string text)
-		{
-			byte[] bytes = Encoding.UTF8.GetBytes(text ?? string.Empty);
-			stream.Write(BitConverter.GetBytes(bytes.Length)); stream.Write(bytes);
-		}
+		void Write(byte[] bytes) { stream.Write(BitConverter.GetBytes(bytes.Length)); stream.Write(bytes); }
+		void Append(string text) => Write(Encoding.UTF8.GetBytes(text ?? string.Empty));
 		if (!ContentReady) throw new InvalidOperationException("Mod content hash is still being prepared");
 		Append(m_modContent.GetAwaiter().GetResult());
 		Append(MyFinalBuildConstants.APP_VERSION_STRING.ToString());
@@ -305,13 +311,19 @@ internal static partial class AccountingEngine
 		Append(string.Join("|", session.RefinerySpeedMultiplier.ToString("R", CultureInfo.InvariantCulture),
 			session.AssemblerSpeedMultiplier.ToString("R", CultureInfo.InvariantCulture), session.AssemblerEfficiencyMultiplier.ToString("R", CultureInfo.InvariantCulture),
 			session.Settings.BlocksInventorySizeMultiplier.ToString("R", CultureInfo.InvariantCulture), session.CreativeMode, session.SimplifiedSimulation));
-		foreach (string id in definitions.OrderBy(x => x, StringComparer.Ordinal))
+		long header = stream.Length;
+		string[] ids = definitions.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+		foreach (string id in ids) Append(id);
+		string key = Convert.ToHexString(SHA256.HashData(stream.ToArray()));
+		if (m_contentHashes.TryGetValue(key, out string cached)) return cached;
+		stream.SetLength(header);
+		foreach (string id in ids)
 		{
-			var definition = MyDefinitionManager.Static.GetDefinition(MyDefinitionId.Parse(id)) ?? throw new InvalidDataException("Missing definition " + id);
 			Append(id);
-			Append(DefinitionFingerprint(definition));
+			Write(m_fingerprints.GetOrAdd(id, i => Encoding.UTF8.GetBytes(DefinitionFingerprint(
+				MyDefinitionManager.Static.GetDefinition(MyDefinitionId.Parse(i)) ?? throw new InvalidDataException("Missing definition " + i)))));
 		}
-		return Convert.ToHexString(SHA256.HashData(stream.ToArray()));
+		return m_contentHashes[key] = Convert.ToHexString(SHA256.HashData(stream.ToArray()));
 	}
 
 	// Definition builders do not all serialize their runtime fields (notably fuel/blueprint data).

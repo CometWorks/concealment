@@ -14,8 +14,8 @@ using ConcealmentConfig = Shared.Config.PluginConfig;
 using ConfigStorage = PluginSdk.Config.ConfigStorage;
 // Define assembly version when compiled by Magnetar
 #if !LOCAL_BUILD
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 CometWorks")]
 
 #endif

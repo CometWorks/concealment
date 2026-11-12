@@ -15,10 +15,11 @@ Copyright (c) 2026 CometWorks.
 
 Concealment is free software licensed under the [GNU Affero General Public
 License version 3 only](LICENSE) (`AGPL-3.0-only`), without any warranty,
-with the [CometWorks Independent Extension Exception](LICENSING.md). Proprietary
+with the [CometWorks Independent Extension Exception](EXCEPTION.md). Proprietary
 terms are permitted only for qualifying Independent Extensions under its
 conditions. A plugin label, wrapper or separate process does not exempt covered
-core code or internal patches. [Alternative licensing](LICENSING.md#alternative-licensing)
+core code or internal patches. Read the [licence guide](LICENSING.md) for scope
+and source obligations. [Alternative licensing](LICENSING.md#alternative-licensing)
 remains available by separate written agreement with the relevant copyright holders.
 
 The licensing transition is dated 1 November 2026. The last MIT snapshot is
@@ -36,8 +37,8 @@ license and warranty notices. Source must match the version you run or distribut
 an upstream link alone does not provide the source of a modified fork.
 
 Source is available at https://github.com/CometWorks/concealment, with build
-instructions below. Binary builds include `LICENSE`, `NOTICE` and `LICENSING.md`
-alongside the plugin; local Magnetar deployment keeps them in `Local/Concealment.licenses`.
+instructions below. Binary builds include `LICENSE`, `NOTICE`, `LICENSING.md`
+and `EXCEPTION.md` alongside the plugin; local Magnetar deployment keeps them in `Local/Concealment.licenses`.
 Separately licensed dependencies retain their own licenses and notices.
 
 ## Prerequisites

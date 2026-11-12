@@ -15,8 +15,11 @@ Copyright (c) 2026 CometWorks.
 
 Concealment is free software licensed under the [GNU Affero General Public
 License version 3 only](LICENSE) (`AGPL-3.0-only`), without any warranty,
-with the [independent-extension exception](LICENSING.md). Independent plugins
-and integrations using supported APIs may remain proprietary.
+with the [CometWorks Independent Extension Exception](LICENSING.md). Proprietary
+terms are permitted only for qualifying Independent Extensions under its
+conditions. A plugin label, wrapper or separate process does not exempt covered
+core code or internal patches. [Alternative licensing](LICENSING.md#alternative-licensing)
+remains available by separate written agreement with the relevant copyright holders.
 
 The licensing transition is dated 1 November 2026. The last MIT snapshot is
 preserved by the [`archive/mit` tag](https://github.com/CometWorks/concealment/releases/tag/archive/mit)

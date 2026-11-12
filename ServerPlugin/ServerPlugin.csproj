@@ -305,7 +305,7 @@
 
   <ItemGroup>
     <None Include="app.config" />
-    <None Include="$(RepoRoot)LICENSE;$(RepoRoot)NOTICE"
+    <None Include="$(RepoRoot)LICENSE;$(RepoRoot)NOTICE;$(RepoRoot)LICENSING.md"
           Link="%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest"
@@ -398,7 +398,7 @@
     />
     <Copy
       Condition="'$(PluginDirectory)' != ''"
-      SourceFiles="$(TargetDir)LICENSE;$(TargetDir)NOTICE"
+      SourceFiles="$(TargetDir)LICENSE;$(TargetDir)NOTICE;$(TargetDir)LICENSING.md"
       DestinationFolder="$(PluginDirectory)$(PathSeparator)$(TargetName).licenses"
     />
     <Copy Condition="'$(PluginDirectory)' != ''"

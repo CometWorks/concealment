@@ -319,13 +319,13 @@
     <Copy Condition="'$(PluginDirectory)' != '' And Exists('$(PluginDataFile)')"
           SourceFiles="$(PluginDataFile)" DestinationFiles="$(PluginDirectory)$(PathSeparator)plugin.xml" />
     <Copy Condition="'$(PluginDirectory)' != ''"
-          SourceFiles="$(TargetDir)LICENSE;$(TargetDir)NOTICE" DestinationFolder="$(PluginDirectory)" />
+          SourceFiles="$(TargetDir)LICENSE;$(TargetDir)NOTICE;$(TargetDir)LICENSING.md" DestinationFolder="$(PluginDirectory)" />
     <Message Condition="'$(PluginDirectory)' != ''" Importance="high"
              Text="Deployed the $(TargetFramework) client build to &quot;$(PluginDirectory)&quot;" />
   </Target>
 
   <ItemGroup>
-    <None Include="$(RepoRoot)LICENSE;$(RepoRoot)NOTICE" Link="%(Filename)%(Extension)"
+    <None Include="$(RepoRoot)LICENSE;$(RepoRoot)NOTICE;$(RepoRoot)LICENSING.md" Link="%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
           Pack="true" PackagePath="" />
   </ItemGroup>

@@ -14,7 +14,9 @@ does not enable concealment on someone else's server.
 Copyright (c) 2026 CometWorks.
 
 Concealment is free software licensed under the [GNU Affero General Public
-License version 3 only](LICENSE) (`AGPL-3.0-only`), without any warranty.
+License version 3 only](LICENSE) (`AGPL-3.0-only`), without any warranty,
+with the [independent-extension exception](LICENSING.md). Independent plugins
+and integrations using supported APIs may remain proprietary.
 
 The licensing transition is dated 1 November 2026. The last MIT snapshot is
 preserved by the [`archive/mit` tag](https://github.com/CometWorks/concealment/releases/tag/archive/mit)
@@ -31,8 +33,8 @@ license and warranty notices. Source must match the version you run or distribut
 an upstream link alone does not provide the source of a modified fork.
 
 Source is available at https://github.com/CometWorks/concealment, with build
-instructions below. Binary builds include `LICENSE` and `NOTICE` alongside the
-plugin; local Magnetar deployment keeps them in `Local/Concealment.licenses`.
+instructions below. Binary builds include `LICENSE`, `NOTICE` and `LICENSING.md`
+alongside the plugin; local Magnetar deployment keeps them in `Local/Concealment.licenses`.
 Separately licensed dependencies retain their own licenses and notices.
 
 ## Prerequisites
